@@ -1,7 +1,7 @@
 /**
  * 实现对包依赖关系等的分析
  */
-import type { Packages, Package } from './packages';
+import type { Packages } from './packages';
 export declare type SemVerKeyword = 'major' | 'minor' | 'patch';
 export declare type DependenciesTree = Map<string, DependenciesLeaf>;
 interface DependenciesLeaf {
@@ -17,6 +17,7 @@ export declare function resolveDependencies(packages: Packages): DependenciesTre
  * 按 sermver 格式解析 package 版本号
  */
 export declare function parseVersion(version: string): {
+    prefix: string;
     major: number;
     minor: number;
     patch: number;
@@ -43,6 +44,6 @@ export declare function diffVersion(ver1Str: string, ver2Str: string): {
  * - 传入其他值则直接用这个值作为新版本号
  */
 export declare function updateVersion(current: string, keyword: string): string;
-export declare function arrangePublishQueue(entry: Package, entryVersionKeyword: string, // 这个参数直接传给 updateVersion()，允许不是 semVerKeyword
+export declare function arrangePublishQueue(entries: Map<string, string>, // packageName => versionKeyword （这个值直接传给 updateVersion()，允许不是 semVerKeyword）
 packages: Packages, dependencies: DependenciesTree): Map<string, string>;
 export {};

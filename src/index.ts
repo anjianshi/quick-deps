@@ -2,6 +2,7 @@
 import qargs from 'quick-args'
 import cmdVersion from './commands/version'
 import cmdPublish from './commands/publish'
+import cmdSync from './commands/sync'
 
 
 qargs
@@ -9,4 +10,5 @@ qargs
   .describe('Simple dependencies manage.')
   .command(cmdVersion)
   .command(cmdPublish)
+  .command(cmdSync)
   .parse()

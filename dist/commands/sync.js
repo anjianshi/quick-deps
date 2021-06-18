@@ -9,64 +9,46 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const path = require("path");
 const quick_args_1 = require("quick-args");
 const logging_1 = require("../lib/logging");
 const packages_1 = require("../lib/packages");
 const analytics_1 = require("../lib/analytics");
 exports.default = new quick_args_1.Command({
-    name: 'publish',
-    describe: "publish a new version of specified package",
-    handler: publishHandler
-}).named({
-    name: 'package',
-    short: 'p',
-    describe: 'specify package to publish, pass package name or package directory name',
-}).named({
-    name: 'version',
-    short: 'v',
-    describe: 'specify new version or increment type: major minor patch',
+    name: 'sync',
+    describe: "Keep packages depends newest version from each other.",
+    handler: syncHandler,
 });
-function publishHandler(args) {
-    var _a, _b;
+function syncHandler() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            yield publish((_a = args.package) !== null && _a !== void 0 ? _a : '', (_b = args.version) !== null && _b !== void 0 ? _b : '');
+            yield executeSync();
         }
         catch (e) {
             console.error(e);
         }
     });
 }
-function publish(packageName, versionKeyword) {
+function executeSync() {
     return __awaiter(this, void 0, void 0, function* () {
         const root = yield packages_1.findRoot();
         const packages = yield packages_1.getPackages(root);
         const dependencies = analytics_1.resolveDependencies(packages);
-        // 确认要发新版的 package
-        let pkg;
-        if (packageName) {
-            if (packages.has(packageName)) {
-                pkg = packages.get(packageName);
+        // 找出依赖过时的包
+        const entries = new Map();
+        for (const pkg of packages.values()) {
+            for (const [dep, depVersion] of pkg.dependencies.entries()) {
+                const depPackage = packages.get(dep);
+                if (!depPackage)
+                    continue;
+                const versionDiff = analytics_1.diffVersion(depVersion, depPackage.version);
+                if (versionDiff.diff === -1) {
+                    entries.set(pkg.name, versionDiff.keyword);
+                }
             }
-            else {
-                const packagePath = path.join(root, packageName);
-                const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
-                if (detectedPkg)
-                    pkg = detectedPkg;
-                else
-                    throw new Error(`package ${packageName} not exists`);
-            }
-        }
-        else {
-            const detected = packages_1.detectPackage(root, packages);
-            if (!detected)
-                throw new Error(`Not in package directory, need specify package name`);
-            pkg = detected;
         }
         // 生成所有需要更新的相关包的更新队列，依次发布新版
         const updates = [];
-        const queue = analytics_1.arrangePublishQueue(new Map([[pkg.name, versionKeyword]]), packages, dependencies);
+        const queue = analytics_1.arrangePublishQueue(entries, packages, dependencies);
         for (const [packageName, newVersion] of queue.entries()) {
             const pkg = packages.get(packageName);
             const prevVersion = pkg.version;
@@ -87,11 +69,11 @@ function publish(packageName, versionKeyword) {
                 dependencies: updatedDependencies
             });
         }
-        logging_1.default(`\nUpdates:\n${updates.map(u => `${u.name}: ${u.prevVersion} => ${u.newVersion}${u.dependencies.length
+        logging_1.default(`\nSync:\n${updates.map(u => `${u.name}: ${u.prevVersion} => ${u.newVersion}${u.dependencies.length
             ? '\n' + u.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
             : ''}`).join('\n\n')}\n`);
         for (const updatePackageName of queue.keys()) {
-            yield packages_1.publishPackage(packages.get(updatePackageName), updatePackageName !== pkg.name);
+            yield packages_1.publishPackage(packages.get(updatePackageName), true);
         }
     });
 }

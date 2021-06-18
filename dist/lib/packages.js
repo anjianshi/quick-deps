@@ -220,7 +220,7 @@ function writePackage(pkg, writeRaw = false) {
 }
 exports.writePackage = writePackage;
 function isEmpty(obj) {
-    return !obj || Object.keys(obj).length > 0;
+    return !obj || Object.keys(obj).length === 0;
 }
 /**
  * 对指定 package 执行 publish 操作

@@ -1,60 +1,48 @@
 import * as path from 'path'
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
-import { findRoot, getPackages, detectPackage, publishPackage } from '../lib/packages'
-import type { Package } from '../lib/packages'
-import { resolveDependencies, arrangePublishQueue, parseVersion } from '../lib/analytics'
+import { findRoot, getPackages, publishPackage } from '../lib/packages'
+import { resolveDependencies, arrangePublishQueue, diffVersion, parseVersion } from '../lib/analytics'
 
 
 export default new Command({
-  name: 'publish',
-  describe: "publish a new version of specified package",
-  handler: publishHandler
-}).named({
-  name: 'package',
-  short: 'p',
-  describe: 'specify package to publish, pass package name or package directory name',
-}).named({
-  name: 'version',
-  short: 'v',
-  describe: 'specify new version or increment type: major minor patch',
+  name: 'sync',
+  describe: "Keep packages depends newest version from each other.",
+  handler: syncHandler,
 })
 
 
-async function publishHandler(args: { package?: string, version?: string }) {
+async function syncHandler() {
   try {
-    await publish(args.package ?? '', args.version ?? '')
+    await executeSync()
   } catch(e) {
     console.error(e)
   }
 }
 
 
-async function publish(packageName: string, versionKeyword: string) {
+async function executeSync() {
   const root = await findRoot()
   const packages = await getPackages(root)
   const dependencies = resolveDependencies(packages)
 
-  // 确认要发新版的 package
-  let pkg: Package
-  if (packageName) {
-    if (packages.has(packageName)) {
-      pkg = packages.get(packageName)!
-    } else {
-      const packagePath = path.join(root, packageName)
-      const detectedPkg = [...packages.values()].find(p => p.path === packagePath)
-      if (detectedPkg) pkg = detectedPkg
-      else throw new Error(`package ${packageName} not exists`)
+  // 找出依赖过时的包
+  const entries = new Map<string, string>()
+  for (const pkg of packages.values()) {
+    for(const [dep, depVersion] of pkg.dependencies.entries()) {
+      const depPackage = packages.get(dep)
+      if (!depPackage) continue
+
+      const versionDiff = diffVersion(depVersion, depPackage.version)
+      if (versionDiff.diff === -1) {
+        entries.set(pkg.name, versionDiff.keyword)
+      }
     }
-  } else {
-    const detected = detectPackage(root, packages)
-    if (!detected) throw new Error(`Not in package directory, need specify package name`)
-    pkg = detected
   }
 
   // 生成所有需要更新的相关包的更新队列，依次发布新版
   const updates: PublishUpdateRecord[] = []
-  const queue = arrangePublishQueue(new Map([[pkg.name, versionKeyword]]), packages, dependencies)
+  const queue = arrangePublishQueue(entries, packages, dependencies)
   for(const [packageName, newVersion] of queue.entries()) {
     const pkg = packages.get(packageName)!
     const prevVersion = pkg.version
@@ -78,7 +66,7 @@ async function publish(packageName: string, versionKeyword: string) {
     })
   }
 
-  logging(`\nUpdates:\n${updates.map(u =>
+  logging(`\nSync:\n${updates.map(u =>
     `${u.name}: ${u.prevVersion} => ${u.newVersion}${u.dependencies.length
       ? '\n' + u.dependencies.map(d =>
         `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`
@@ -87,7 +75,7 @@ async function publish(packageName: string, versionKeyword: string) {
   ).join('\n\n')}\n`)
 
   for(const updatePackageName of queue.keys()) {
-    await publishPackage(packages.get(updatePackageName)!, updatePackageName !== pkg.name)
+    await publishPackage(packages.get(updatePackageName)!, true)
   }
 }
 interface PublishUpdateRecord {

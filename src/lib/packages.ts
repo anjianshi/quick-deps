@@ -258,7 +258,7 @@ export function writePackage(pkg: Package, writeRaw = false) {
 }
 
 function isEmpty<O extends { [key: string]: any }>(obj?: O) {
-  return !obj || Object.keys(obj).length > 0
+  return !obj || Object.keys(obj).length === 0
 }
 
 

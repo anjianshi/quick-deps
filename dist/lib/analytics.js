@@ -67,9 +67,10 @@ function _detectCircularDependency(tree, prevLeaves) {
  * 按 sermver 格式解析 package 版本号
  */
 function parseVersion(version) {
-    const [rawMajor, rawMinor = '0', rawPatch = '0'] = version.split('.', 3);
+    const prefix = version.match(/^\d/) ? '' : version.slice(0, 1); // ^ = 等版本号前缀
+    const [rawMajor, rawMinor = '0', rawPatch = '0'] = version.slice(prefix.length).split('.', 3);
     let [major, minor, patch] = [rawMajor, rawMinor, rawPatch].map(toNumber);
-    return { major, minor, patch };
+    return { prefix, major, minor, patch };
 }
 exports.parseVersion = parseVersion;
 /**
@@ -100,7 +101,7 @@ exports.diffVersion = diffVersion;
  * - 传入其他值则直接用这个值作为新版本号
  */
 function updateVersion(current, keyword) {
-    let { major, minor, patch } = parseVersion(current);
+    let { prefix, major, minor, patch } = parseVersion(current);
     if (keyword === 'major') {
         major += 1;
         minor = 0;
@@ -116,7 +117,7 @@ function updateVersion(current, keyword) {
     else {
         return keyword || current;
     }
-    return `${major}.${minor}.${patch}`;
+    return `${prefix}${major}.${minor}.${patch}`;
 }
 exports.updateVersion = updateVersion;
 function toNumber(str) {
@@ -130,10 +131,10 @@ function toNumber(str) {
  * 返回： Map<packageName, newVersion>
  */
 const semVerMap = { major: 2, minor: 1, patch: 0 };
-function arrangePublishQueue(entry, entryVersionKeyword, // 这个参数直接传给 updateVersion()，允许不是 semVerKeyword
+function arrangePublishQueue(entries, // packageName => versionKeyword （这个值直接传给 updateVersion()，允许不是 semVerKeyword）
 packages, dependencies) {
-    // 需要更新的所有包的名称
-    const packages2publish = new Set();
+    // 找出所有需要更新的包
+    const packages2publish = new Set(); // 所有需要更新的包的包名
     function expandRelated(packageName) {
         var _a;
         if (!packages.has(packageName))
@@ -149,7 +150,8 @@ packages, dependencies) {
                 expandRelated(usedByPackage);
         }
     }
-    expandRelated(entry.name);
+    for (const entryPackageName of entries.keys())
+        expandRelated(entryPackageName);
     // 计算各包的更新顺序及版本号
     // 出现在此 Map 里的都是已计算完成的包
     // packageName => PublishRecord
@@ -173,7 +175,7 @@ packages, dependencies) {
             if (diff.diff === 1 && semVerMap[diff.keyword] > semVerMap[semVerLevel])
                 semVerLevel = diff.keyword;
         });
-        const newVersion = updateVersion(pkg.version, pkg.name == entry.name ? entryVersionKeyword : semVerLevel // entry 包的 semVerLevel 通过外接传入，不通过计算获得
+        const newVersion = updateVersion(pkg.version, entries.has(pkg.name) ? entries.get(pkg.name) : semVerLevel // entry 包的 semVerLevel 通过外接传入，不通过计算获得
         );
         records.set(packageName, { name: packageName, weights, version: newVersion });
     }

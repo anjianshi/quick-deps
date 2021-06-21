@@ -1,4 +1,5 @@
 import * as fs from 'fs'
+import * as path from 'path'
 import * as childProcess from 'child_process'
 import logging from './logging'
 
@@ -12,6 +13,14 @@ export function fileExists(filepath: string) {
       resolve(!err && stat.isFile())
     })
   })
+}
+
+
+/**
+ * 判断两个字符串是否是同一个路径
+ */
+export function isSamePath(a: string, b: string) {
+  return path.resolve(a) === path.resolve(b)
 }
 
 

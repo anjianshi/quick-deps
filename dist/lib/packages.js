@@ -11,15 +11,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.publishPackage = exports.writePackage = exports.getPackage = exports.getPackages = exports.detectPackage = exports.findRoot = void 0;
 /**
- * package 信息相关工具函数
+ * package management functions
  */
 const path = require("path");
 const fs = require("fs");
-const childProcess = require("child_process");
 const logging_1 = require("./logging");
-const analytics_1 = require("./analytics");
+const lang_1 = require("./lang");
+const semver_1 = require("./semver");
 // ==============================
-// Root
+// Packages Root
 // ==============================
 /**
  * 找到 packages 根目录
@@ -89,19 +89,13 @@ function detectPackage(root, packages) {
     if (packageDirName) {
         const packageDir = path.join(root, packageDirName);
         for (const pkg of packages.values()) {
-            if (isSamePath(pkg.path, packageDir))
+            if (lang_1.isSamePath(pkg.path, packageDir))
                 return pkg;
         }
     }
     return null;
 }
 exports.detectPackage = detectPackage;
-/**
- * 判断两个路径是否相同
- */
-function isSamePath(a, b) {
-    return path.resolve(a) === path.resolve(b);
-}
 /**
  * 获取根目录下各 package 的 package.json 内容
  */
@@ -131,7 +125,10 @@ exports.getPackages = getPackages;
 function getPackage(dirpath) {
     return __awaiter(this, void 0, void 0, function* () {
         const [raw, rawString] = yield getInfoFromPackageJSON(dirpath);
-        return formatInfoFromPackageJSON(raw, rawString, dirpath);
+        const formatted = formatInfoFromPackageJSON(raw, rawString, dirpath);
+        if (!formatted)
+            throw new Error('package format failed');
+        return formatted;
     });
 }
 exports.getPackage = getPackage;
@@ -161,26 +158,32 @@ function getInfoFromPackageJSON(dirpath) {
  */
 function formatInfoFromPackageJSON(raw, rawString, dirpath) {
     var _a, _b, _c, _d, _e;
-    const fallbackName = path.basename(dirpath);
+    const version = semver_1.SemVer.parse((_a = raw.version) !== null && _a !== void 0 ? _a : '');
+    if (!version)
+        return null;
     const dependencies = new Map();
-    const rawDependencies = [...Object.entries((_a = raw.dependencies) !== null && _a !== void 0 ? _a : {}), ...Object.entries((_b = raw.devDependencies) !== null && _b !== void 0 ? _b : {}), ...Object.entries((_c = raw.peerDependencies) !== null && _c !== void 0 ? _c : {})];
-    for (const [name, version] of rawDependencies) {
-        // 同一个依赖出现两次，取版本号最大的
-        if (dependencies.has(name)) {
-            if (analytics_1.diffVersion(version, dependencies.get(name)).diff === 1)
-                dependencies.set(name, version);
-        }
-        else {
-            dependencies.set(name, version);
+    const rawDependencies = [
+        ...Object.entries((_b = raw.dependencies) !== null && _b !== void 0 ? _b : {}),
+        ...Object.entries((_c = raw.devDependencies) !== null && _c !== void 0 ? _c : {}),
+        ...Object.entries((_d = raw.peerDependencies) !== null && _d !== void 0 ? _d : {})
+    ];
+    for (const [depName, devRawVersion] of rawDependencies) {
+        const depVersion = semver_1.SemVer.parse(devRawVersion);
+        if (!depVersion)
+            continue;
+        // 同依赖已出现过，记录版本号较大的那个
+        if (!dependencies.has(depName) || depVersion.diff(dependencies.get(depName)).diff === 1) {
+            dependencies.set(depName, depVersion);
         }
     }
+    const fallbackName = path.basename(dirpath);
     return {
+        name: ((_e = raw.name) !== null && _e !== void 0 ? _e : '') || fallbackName,
+        version: version,
+        dependencies,
         raw,
         rawString,
         path: dirpath,
-        name: ((_d = raw.name) !== null && _d !== void 0 ? _d : '') || fallbackName,
-        version: ((_e = raw.version) !== null && _e !== void 0 ? _e : '') || '0.0.1',
-        dependencies,
     };
 }
 /**
@@ -194,15 +197,13 @@ function writePackage(pkg, writeRaw = false) {
     else {
         const updated = Object.assign({}, pkg.raw);
         updated.name = pkg.name;
-        updated.version = pkg.version;
+        updated.version = pkg.version.toString();
         for (const depType of ['dependencies', 'devDependencies', 'peerDependencies']) {
             if (isEmpty(updated[depType]))
                 continue;
             const source = updated[depType];
-            for (const [depName, devVersion] of Object.entries(source)) {
-                const newVersion = pkg.dependencies.get(depName);
-                if (devVersion !== newVersion)
-                    source[depName] = newVersion;
+            for (const [depName, depVersion] of pkg.dependencies) {
+                source[depName] = depVersion.toString();
             }
         }
         json = JSON.stringify(updated, null, 2);
@@ -225,13 +226,13 @@ function isEmpty(obj) {
 /**
  * 对指定 package 执行 publish 操作
  */
-function publishPackage(pkg, shouldSyncDependencies = false) {
+function publishPackage(pkg, shouldSyncDependencies = true) {
     return __awaiter(this, void 0, void 0, function* () {
         yield writePackage(pkg);
         try {
             if (shouldSyncDependencies)
                 yield syncDependencies(pkg);
-            yield execute('npm publish', pkg.path);
+            yield lang_1.execute('npm publish', { cwd: pkg.path });
         }
         catch (e) {
             // 发布失败，还原 package.json 内容
@@ -248,36 +249,14 @@ function syncDependencies(pkg) {
     return __awaiter(this, void 0, void 0, function* () {
         let hasYarnBin = true;
         try {
-            yield execute('yarn --version', pkg.path);
+            yield lang_1.execute('yarn --version', { cwd: pkg.path });
         }
         catch (e) {
             hasYarnBin = false;
         }
-        const useYarn = hasYarnBin && ((yield fileExists(path.join(pkg.path, 'yarn.lock')))
-            || !(yield fileExists(path.join(pkg.path, 'package-lock.json'))));
-        if (useYarn)
-            yield execute('yarn', pkg.path);
-        else
-            yield execute('npm install', pkg.path);
-    });
-}
-function execute(command, cwd, stdio = 'inherit') {
-    return new Promise((resolve, reject) => {
-        logging_1.default(cwd ? `Execute: \`${command}\` at ${cwd}` : `Execute: \`${command}\``);
-        const proc = childProcess.spawn(command, Object.assign(Object.assign({}, cwd ? { cwd } : {}), { shell: true, stdio }));
-        proc.on('error', reject);
-        proc.on('exit', code => {
-            if (code !== 0)
-                reject(new Error(`Command execute failed: ${code}`));
-            else
-                resolve();
-        });
-    });
-}
-function fileExists(filepath) {
-    return new Promise(resolve => {
-        fs.stat(filepath, (err, stat) => {
-            resolve(stat && stat.isFile());
-        });
+        const useYarn = hasYarnBin && ((yield lang_1.fileExists(path.join(pkg.path, 'yarn.lock')))
+            || !(yield lang_1.fileExists(path.join(pkg.path, 'package-lock.json'))));
+        const command = useYarn ? 'yarn' : 'npm install';
+        yield lang_1.execute(command, { cwd: pkg.path });
     });
 }

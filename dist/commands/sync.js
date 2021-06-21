@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const quick_args_1 = require("quick-args");
 const logging_1 = require("../lib/logging");
 const packages_1 = require("../lib/packages");
-const analytics_1 = require("../lib/analytics");
+const dependencies_1 = require("../lib/dependencies");
 exports.default = new quick_args_1.Command({
     name: 'sync',
     describe: "Keep packages depends newest version from each other.",
@@ -32,7 +32,7 @@ function executeSync() {
     return __awaiter(this, void 0, void 0, function* () {
         const root = yield packages_1.findRoot();
         const packages = yield packages_1.getPackages(root);
-        const dependencies = analytics_1.resolveDependencies(packages);
+        const dependencies = dependencies_1.resolveDependencies(packages);
         // 找出依赖过时的包
         const entries = new Map();
         for (const pkg of packages.values()) {
@@ -40,40 +40,25 @@ function executeSync() {
                 const depPackage = packages.get(dep);
                 if (!depPackage)
                     continue;
-                const versionDiff = analytics_1.diffVersion(depVersion, depPackage.version);
-                if (versionDiff.diff === -1) {
-                    entries.set(pkg.name, versionDiff.keyword);
-                }
+                const versionDiff = depVersion.diff(depPackage.version);
+                if (versionDiff.diff === -1)
+                    entries.set(pkg.name, versionDiff.level);
             }
         }
         // 生成所有需要更新的相关包的更新队列，依次发布新版
-        const updates = [];
-        const queue = analytics_1.arrangePublishQueue(entries, packages, dependencies);
-        for (const [packageName, newVersion] of queue.entries()) {
+        const queue = dependencies_1.arrangePublishQueue(entries, packages, dependencies);
+        for (const [packageName, record] of queue.entries()) {
             const pkg = packages.get(packageName);
-            const prevVersion = pkg.version;
-            pkg.version = newVersion;
-            // 此包的依赖可能也在此次更新队列里，版本号也变化了，那么在此也要更新依赖的版本号
-            const updatedDependencies = [];
-            for (const [dep, depVersion] of pkg.dependencies) {
-                if (queue.has(dep)) {
-                    const depNewVersion = analytics_1.parseVersion(depVersion).prefix + queue.get(dep);
-                    pkg.dependencies.set(dep, depNewVersion);
-                    updatedDependencies.push({ name: dep, prevVersion: pkg.dependencies.get(dep), newVersion: depNewVersion });
-                }
+            pkg.version = record.newVersion;
+            for (const depRecord of record.dependencies.values()) {
+                pkg.dependencies.set(depRecord.name, depRecord.newVersion);
             }
-            updates.push({
-                name: packageName,
-                prevVersion,
-                newVersion,
-                dependencies: updatedDependencies
-            });
         }
-        logging_1.default(`\nSync:\n${updates.map(u => `${u.name}: ${u.prevVersion} => ${u.newVersion}${u.dependencies.length
-            ? '\n' + u.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
-            : ''}`).join('\n\n')}\n`);
+        logging_1.default(`\nSync:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
+            ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
+            : ''}`).join('\n\n')}\n\n`);
         for (const updatePackageName of queue.keys()) {
-            yield packages_1.publishPackage(packages.get(updatePackageName), true);
+            yield packages_1.publishPackage(packages.get(updatePackageName));
         }
     });
 }

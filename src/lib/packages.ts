@@ -4,8 +4,8 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import logging from './logging'
-import { fileExists, execute } from './lang'
-import { diffVersion } from './dependencies'
+import { fileExists, isSamePath, execute } from './lang'
+import { SemVer } from './semver'
 
 
 // ==============================
@@ -91,14 +91,6 @@ export function detectPackage(root: string, packages: Packages) {
 
 
 
-/**
- * 判断两个路径是否相同
- */
-function isSamePath(a: string, b: string) {
-  return path.resolve(a) === path.resolve(b)
-}
-
-
 // ==============================
 // Packages
 // ==============================
@@ -147,11 +139,17 @@ interface InfoFromPackageJSON {
 // 整理过的 package 信息
 export interface Package {
   name: string,
-  version: string,
 
-  // 原 dependencies、devDependencies、peerDependencies 合并到一起以便于处理
-  // （不影响最终写入到 package.json 里的内容；只是就不支持同一个依赖项在这三个种类里有不同的版本号了，不过因为设计上也要求版本号固定用最新的，所以没关系）
-  dependencies: Map<string, string>   // name => version
+  // version 无法成功解析成 SemVer 的 package 会被忽略
+  version: SemVer,
+
+  /*
+  原 dependencies、devDependencies、peerDependencies 合并到一起以便于处理
+  不影响最终写入到 package.json 里的内容；只是就不支持同一个依赖项在这三个种类里有不同的版本号了，不过因为设计上也要求版本号固定用最新的，所以没关系
+
+  依赖版本无法解析成 SemVer 的依赖会被忽略
+  */
+  dependencies: Map<string, SemVer>
 
   // 原始的完整 package.json 数据
   raw: InfoFromPackageJSON & { [key: string]: any },
@@ -166,9 +164,11 @@ export interface Package {
  * 获取指定 package 的信息
  * 若指定目录不是一个合法 package，抛出对应异常
  */
- export async function getPackage(dirpath: string) {
+export async function getPackage(dirpath: string) {
   const [raw, rawString] = await getInfoFromPackageJSON(dirpath)
-  return formatInfoFromPackageJSON(raw, rawString, dirpath)
+  const formatted = formatInfoFromPackageJSON(raw, rawString, dirpath)
+  if (!formatted) throw new Error('package format failed')
+  return formatted
 }
 
 
@@ -196,27 +196,35 @@ function getInfoFromPackageJSON(dirpath: string) {
 /**
  * 格式化从 package.json 里取得的包信息
  */
-function formatInfoFromPackageJSON(raw: InfoFromPackageJSON, rawString: string, dirpath: string): Package {
-  const fallbackName = path.basename(dirpath)
+function formatInfoFromPackageJSON(raw: InfoFromPackageJSON, rawString: string, dirpath: string): Package | null {
+  const version = SemVer.parse(raw.version ?? '')
+  if (!version) return null
 
   const dependencies: Package['dependencies'] = new Map()
-  const rawDependencies = [...Object.entries(raw.dependencies ?? {}), ...Object.entries(raw.devDependencies ?? {}), ...Object.entries(raw.peerDependencies ?? {})]
-  for(const [name, version] of rawDependencies) {
-    // 同一个依赖出现两次，取版本号最大的
-    if (dependencies.has(name)) {
-      if (diffVersion(version, dependencies.get(name)!).diff === 1) dependencies.set(name, version)
-    } else {
-      dependencies.set(name, version)
+  const rawDependencies = [
+    ...Object.entries(raw.dependencies ?? {}),
+    ...Object.entries(raw.devDependencies ?? {}),
+    ...Object.entries(raw.peerDependencies ?? {})
+  ]
+  for(const [depName, devRawVersion] of rawDependencies) {
+    const depVersion = SemVer.parse(devRawVersion)
+    if (!depVersion) continue
+
+    // 同依赖已出现过，记录版本号较大的那个
+    if (!dependencies.has(depName) || depVersion.diff(dependencies.get(depName)!).diff === 1) {
+      dependencies.set(depName, depVersion)
     }
   }
 
+  const fallbackName = path.basename(dirpath)
+
   return {
+    name: (raw.name ?? '') || fallbackName,
+    version: version,
+    dependencies,
     raw,
     rawString,
     path: dirpath,
-    name: (raw.name ?? '') || fallbackName,
-    version: (raw.version ?? '') || '0.0.1',
-    dependencies,
   }
 }
 
@@ -231,14 +239,13 @@ export function writePackage(pkg: Package, writeRaw = false) {
   } else {
     const updated = { ...pkg.raw }
     updated.name = pkg.name
-    updated.version = pkg.version
+    updated.version = pkg.version.toString()
 
     for (const depType of ['dependencies', 'devDependencies', 'peerDependencies']) {
       if (isEmpty(updated[depType])) continue
-      const source = updated[depType]
-      for(const [depName, devVersion] of Object.entries(source)) {
-        const newVersion = pkg.dependencies.get(depName)
-        if (devVersion !== newVersion) source[depName] = newVersion
+      const source = updated[depType] as { [name: string]: string }
+      for(const [depName, depVersion] of pkg.dependencies) {
+        source[depName] = depVersion.toString()
       }
     }
 
@@ -265,7 +272,7 @@ function isEmpty<O extends { [key: string]: any }>(obj?: O) {
 /**
  * 对指定 package 执行 publish 操作
  */
-export async function publishPackage(pkg: Package, shouldSyncDependencies = false) {
+export async function publishPackage(pkg: Package, shouldSyncDependencies = true) {
   await writePackage(pkg)
 
   try {

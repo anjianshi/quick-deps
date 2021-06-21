@@ -2,7 +2,9 @@ import * as path from 'path'
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
 import { findRoot, getPackages, publishPackage } from '../lib/packages'
-import { resolveDependencies, arrangePublishQueue, diffVersion, parseVersion } from '../lib/analytics'
+import { resolveDependencies, arrangePublishQueue } from '../lib/dependencies'
+import { SemVer, isSemVerLevel } from '../lib/semver'
+import type { SemVerLevel } from '../lib/semver'
 
 
 export default new Command({
@@ -27,55 +29,37 @@ async function executeSync() {
   const dependencies = resolveDependencies(packages)
 
   // 找出依赖过时的包
-  const entries = new Map<string, string>()
+  const entries = new Map<string, SemVerLevel>()
   for (const pkg of packages.values()) {
     for(const [dep, depVersion] of pkg.dependencies.entries()) {
       const depPackage = packages.get(dep)
       if (!depPackage) continue
 
-      const versionDiff = diffVersion(depVersion, depPackage.version)
-      if (versionDiff.diff === -1) {
-        entries.set(pkg.name, versionDiff.keyword)
-      }
+      const versionDiff = depVersion.diff(depPackage.version)
+      if (versionDiff.diff === -1) entries.set(pkg.name, versionDiff.level)
     }
   }
 
   // 生成所有需要更新的相关包的更新队列，依次发布新版
-  const updates: PublishUpdateRecord[] = []
   const queue = arrangePublishQueue(entries, packages, dependencies)
-  for(const [packageName, newVersion] of queue.entries()) {
+  for(const [packageName, record] of queue.entries()) {
     const pkg = packages.get(packageName)!
-    const prevVersion = pkg.version
-    pkg.version = newVersion
-
-    // 此包的依赖可能也在此次更新队列里，版本号也变化了，那么在此也要更新依赖的版本号
-    const updatedDependencies: PublishDependenciesUpdateRecord[] = []
-    for(const [dep, depVersion] of pkg.dependencies) {
-      if (queue.has(dep)) {
-        const depNewVersion =  parseVersion(depVersion).prefix + queue.get(dep)!
-        pkg.dependencies.set(dep, depNewVersion)
-        updatedDependencies.push({ name: dep, prevVersion: pkg.dependencies.get(dep)!, newVersion: depNewVersion })
-      }
+    pkg.version = record.newVersion
+    for(const depRecord of record.dependencies.values()) {
+      pkg.dependencies.set(depRecord.name, depRecord.newVersion)
     }
-
-    updates.push({
-      name: packageName,
-      prevVersion,
-      newVersion,
-      dependencies: updatedDependencies
-    })
   }
 
-  logging(`\nSync:\n${updates.map(u =>
-    `${u.name}: ${u.prevVersion} => ${u.newVersion}${u.dependencies.length
-      ? '\n' + u.dependencies.map(d =>
+  logging(`\nSync:\n${[...queue.values()].map(r =>
+    `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
+      ? '\n' + r.dependencies.map(d =>
         `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`
       ).join('\n')
       : ''}`
-  ).join('\n\n')}\n`)
+  ).join('\n\n')}\n\n`)
 
   for(const updatePackageName of queue.keys()) {
-    await publishPackage(packages.get(updatePackageName)!, true)
+    await publishPackage(packages.get(updatePackageName)!)
   }
 }
 interface PublishUpdateRecord {

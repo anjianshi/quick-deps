@@ -1,26 +1,23 @@
 /**
  * 实现对包依赖关系等的分析
  */
-import type { Packages, Package } from './packages'
+import type { Packages } from './packages'
+import type { SemVerLevel } from './semver'
+import { SemVer } from './semver'
 
 
-export type SemVerKeyword = 'major' | 'minor' | 'patch'
-
-
+/**
+ * 生成 packages 间的依赖关系树
+ */
 export type DependenciesTree = Map<string, DependenciesLeaf>
 
 // 通过 dependencies、usedBy 两个链表可实现正向和反向索引依赖关系
 interface DependenciesLeaf {
-  name: string,
-
+  name: string,                       // package name
   dependencies: DependenciesTree,     // 此 package 的直接依赖项
   usedBy: DependenciesTree,           // 直接依赖此 package 的项目
 }
 
-
-/**
- * 分析给定各包间的依赖关系
- */
 export function resolveDependencies(packages: Packages): DependenciesTree {
   const root: DependenciesTree = new Map()
 
@@ -86,134 +83,118 @@ function _detectCircularDependency(tree: DependenciesTree, prevLeaves: Set<Depen
 
 
 /**
- * 按 sermver 格式解析 package 版本号
+ * 基于初始要更新的包列表，生成完整的待更新包队列（需要先更新的排在队列前面）
+ * (一个包更新后，依赖它的包也要跟着更新，且这些包发布要有先后顺序，因此需要这样一个计算函数)
  */
-export function parseVersion(version: string) {
-  const prefix = version.match(/^\d/) ? '' : version.slice(0, 1)   // ^ = 等版本号前缀
-  const [rawMajor, rawMinor = '0', rawPatch = '0'] = version.slice(prefix.length).split('.', 3)
-  let [major, minor, patch] = [rawMajor, rawMinor, rawPatch].map(toNumber)
-  return { prefix, major, minor, patch }
-}
-
-
-/**
- * 判断两个版本号是否有差别
- *
- * 版本号相同：             { diff: 0 }
- * ver1 版本高于 ver2：     { diff: 1, keyword }
- * ver1 版本低于 ver2：     { diff: -1, keyword }
- */
- export function diffVersion(ver1Str: string, ver2Str: string): { diff: 0 } | { diff: 1 | -1, keyword: SemVerKeyword } {
-   const ver1 = parseVersion(ver1Str)
-   const ver2 = parseVersion(ver2Str)
-   for(const keyword of ['major', 'minor', 'patch'] as SemVerKeyword[]) {
-     if (ver1[keyword] > ver2[keyword]) return { diff: 1, keyword }
-     else if (ver1[keyword] < ver2[keyword]) return { diff: -1, keyword }
-   }
-   return { diff: 0 }
- }
-
-
-/**
- * 为 package 生成新的版本号
- *
- * keyword:
- * - 传入 major、minor、patch 按照指定规则更新（详见 semver 介绍：https://semver.org/）
- * - 传入空字符串则不更新
- * - 传入其他值则直接用这个值作为新版本号
- */
-export function updateVersion(current: string, keyword: string) {
-  let { prefix, major, minor, patch } = parseVersion(current)
-
-  if (keyword === 'major') {
-    major += 1
-    minor = 0
-    patch = 0
-  } else if (keyword === 'minor') {
-    minor += 1
-    patch = 0
-  }
-  else if (keyword === 'patch') {
-    patch += 1
-  } else {
-    return keyword || current
-  }
-
-  return `${prefix}${major}.${minor}.${patch}`
-}
-
-function toNumber(str: string) {
-  const parsed = parseInt(str, 10)
-  return isFinite(parsed) ? parsed : 0
-}
-
-/**
- * 列出为了更新指定 package 后需要跟着更新的所有包的列表；并根据依赖关系排序，需要先更新的排前面
- * （初始要更新的包也会包含在列表里；且初始包需要提前设置好更新后的版本号）
- *
- * 返回： Map<packageName, newVersion>
- */
-const semVerMap = { major: 2, minor: 1, patch: 0 }
-interface PublishRecord {
-  name: string,     // 包名
-  weights: number,  // 权重（数字越大越晚发布）
-  version: string,  // 新发布要使用的版本号
-}
 export function arrangePublishQueue(
-  entries: Map<string, string>,      // packageName => versionKeyword （这个值直接传给 updateVersion()，允许不是 semVerKeyword）
+  entries: Map<string, SemVer | SemVerLevel>,     // 初始要更新的包 Map(packageName => new version or version updates)
   packages: Packages,
   dependencies: DependenciesTree
 ) {
-  // 找出所有需要更新的包
-  const packages2publish = new Set<string>()      // 所有需要更新的包的包名
-  function expandRelated(packageName: string) {
-    if (!packages.has(packageName)) return
-    if (packages2publish.has(packageName)) return
+  const packages2publish = expandRelateds([...entries.keys()], packages, dependencies)
+  return computePublishQueue(packages2publish, entries, packages, dependencies)
+}
 
-    // 当前包加入相关包列表
-    packages2publish.add(packageName)
 
-    // 依赖此包的包加入相关包列表
-    const packageUsedBy = dependencies.get(packageName)?.usedBy
-    if (packageUsedBy) {
-      for(const usedByPackage of packageUsedBy.keys()) expandRelated(usedByPackage)
+/**
+ * 返回与指定包有关联（依赖或间接依赖）的所有包
+ */
+function expandRelateds(packageNames: string[], packages: Packages, dependencies: DependenciesTree) {
+  const relateds = new Set<string>()
+  function expand(packageName: string) {
+    if (packages.has(packageName) && !relateds.has(packageName)) {
+      // 当前包加入相关包列表
+      relateds.add(packageName)
+
+      // 依赖此包的包加入相关包列表
+      const packageUsedBy = dependencies.get(packageName)?.usedBy
+      if (packageUsedBy) {
+        for(const usedByPackage of packageUsedBy.keys()) expand(usedByPackage)
+      }
     }
   }
-  for(const entryPackageName of entries.keys()) expandRelated(entryPackageName)
+  packageNames.forEach(expand)
+  return relateds
+}
 
-  // 计算各包的更新顺序及版本号
-  // 出现在此 Map 里的都是已计算完成的包
-  // packageName => PublishRecord
-  const records = new Map<string, PublishRecord>()
+
+/**
+ * 计算待发布各包的发布顺序和发布版本号
+ */
+const semVerMap = { major: 2, minor: 1, patch: 0 }
+
+interface PublishComputeResult {
+  name: string,     // 包名
+  weights: number,  // 权重（数字越大越晚发布）
+  version: SemVer,  // 新发布要使用的版本号
+}
+
+interface PublishRecord {
+  name: string,                                      // 更新了的包名
+  prevVersion: SemVer,                               // 更新前的版本号
+  newVersion: SemVer,                                // 更新后的版本号
+  dependencies: PublishDependenciesRecord[]          // 此包发生了更新的依赖包名和版本号
+}
+
+interface PublishDependenciesRecord {
+  name: string,
+  prevVersion: SemVer,
+  newVersion: SemVer,
+}
+
+function computePublishQueue(
+  packages2publish: Set<string>,
+  entries: Map<string, SemVer | SemVerLevel>,
+  packages: Packages,
+  dependencies: DependenciesTree
+): Map<string, PublishRecord> {
+  const computed = new Map<string, PublishComputeResult>()
   function compute(packageName: string) {
-    if (records.has(packageName)) return
+    if (computed.has(packageName)) return
     const pkg = packages.get(packageName)!
 
     const dependenciesWillPublish = [...dependencies.get(packageName)?.dependencies.keys() ?? []]
       .filter(name => packages2publish.has(name))
 
     let weights = 1
-    let semVerLevel: SemVerKeyword = 'patch'
+    let semVerLevel: SemVerLevel = 'patch'
     dependenciesWillPublish.forEach(dependencyPackageName => {
-      if (!records.has(dependencyPackageName)) compute(dependencyPackageName)
-      const dependencyRecord = records.get(dependencyPackageName)!
+      if (!computed.has(dependencyPackageName)) compute(dependencyPackageName)
+      const dependencyRecord = computed.get(dependencyPackageName)!
       weights += dependencyRecord.weights
 
       const dependencyVersion = pkg.dependencies.get(dependencyPackageName)!
-      const diff = diffVersion(dependencyRecord.version, dependencyVersion)
-      if (diff.diff === 1 && semVerMap[diff.keyword] > semVerMap[semVerLevel]) semVerLevel = diff.keyword
+      const diff = dependencyRecord.version.diff(dependencyVersion)
+      if (diff.diff === 1 && semVerMap[diff.level] > semVerMap[semVerLevel]) semVerLevel = diff.level
     })
-    const newVersion = updateVersion(
-      pkg.version,
-      entries.has(pkg.name) ? entries.get(pkg.name)! : semVerLevel   // entry 包的 semVerLevel 通过外接传入，不通过计算获得
+    const newVersion = pkg.version.update(
+      entries.has(pkg.name) ? entries.get(pkg.name)! : semVerLevel   // entry 包的 semVerLevel 通过外界传入，不通过计算获得
     )
 
-    records.set(packageName, { name: packageName, weights, version: newVersion })
+    computed.set(packageName, { name: packageName, weights, version: newVersion })
   }
   packages2publish.forEach(compute)
 
   // 按更新顺序对包列表进行排序
-  const sorted = [...records.values()].sort((a, b) => a.weights - b.weights)
+  const sorted = new Map(
+    [...computed.values()].sort((a, b) => a.weights - b.weights)
+      .map(r => [r.name, r])
+  )
 
-  return new Map(sorted.map(r => [r.name, r.version]))
+  // 生成最终的队列
+  return new Map(
+    [...sorted.values()].map(({ name: packageName, version: newVersion }) => {
+      const pkg = packages.get(packageName)!
+      const prevVersion = pkg.version
+
+      const depRecords: PublishDependenciesRecord[]  = []
+      for(const [depName, depPrevVersion] of pkg.dependencies) {
+        const depNewVersion = sorted.get(depName)?.version
+        if (!depNewVersion) continue
+        depRecords.push({ name: depName, prevVersion: depPrevVersion, newVersion: depNewVersion })
+      }
+
+      return [packageName, { name: packageName, prevVersion, newVersion, dependencies: depRecords }]
+    })
+  )
 }

@@ -1,3 +1,4 @@
+import { SemVer } from './semver';
 /**
  * 找到 packages 根目录
  *
@@ -33,8 +34,8 @@ interface InfoFromPackageJSON {
 }
 export interface Package {
     name: string;
-    version: string;
-    dependencies: Map<string, string>;
+    version: SemVer;
+    dependencies: Map<string, SemVer>;
     raw: InfoFromPackageJSON & {
         [key: string]: any;
     };

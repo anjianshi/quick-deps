@@ -13,15 +13,15 @@ const path = require("path");
 const quick_args_1 = require("quick-args");
 const logging_1 = require("../lib/logging");
 const packages_1 = require("../lib/packages");
-const analytics_1 = require("../lib/analytics");
+const dependencies_1 = require("../lib/dependencies");
+const semver_1 = require("../lib/semver");
 exports.default = new quick_args_1.Command({
     name: 'publish',
     describe: "publish a new version of specified package",
     handler: publishHandler
-}).named({
-    name: 'package',
-    short: 'p',
-    describe: 'specify package to publish, pass package name or package directory name',
+}).rest({
+    name: 'packages',
+    describe: 'specify packages to publish, pass package name or package directory name',
 }).named({
     name: 'version',
     short: 'v',
@@ -31,67 +31,53 @@ function publishHandler(args) {
     var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            yield publish((_a = args.package) !== null && _a !== void 0 ? _a : '', (_b = args.version) !== null && _b !== void 0 ? _b : '');
+            yield publish((_a = args.packages) !== null && _a !== void 0 ? _a : [], (_b = args.version) !== null && _b !== void 0 ? _b : '');
         }
         catch (e) {
             console.error(e);
         }
     });
 }
-function publish(packageName, versionKeyword) {
+function publish(packageNames, versionKeyword) {
     return __awaiter(this, void 0, void 0, function* () {
         const root = yield packages_1.findRoot();
         const packages = yield packages_1.getPackages(root);
-        const dependencies = analytics_1.resolveDependencies(packages);
+        const dependencies = dependencies_1.resolveDependencies(packages);
+        // 解析版本更新参数
+        const versionUpdates = semver_1.isSemVerLevel(versionKeyword)
+            ? versionKeyword
+            : semver_1.SemVer.parse(versionKeyword);
+        if (!versionUpdates)
+            throw new Error(`Invalid version keyword ${versionKeyword}`);
         // 确认要发新版的 package
-        let pkg;
-        if (packageName) {
+        function confirmPublishPackage(packageName) {
             if (packages.has(packageName)) {
-                pkg = packages.get(packageName);
+                return packages.get(packageName);
             }
             else {
                 const packagePath = path.join(root, packageName);
                 const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
                 if (detectedPkg)
-                    pkg = detectedPkg;
+                    return detectedPkg;
                 else
-                    throw new Error(`package ${packageName} not exists`);
+                    throw new Error(`Package ${packageName} not exists`);
             }
         }
-        else {
-            const detected = packages_1.detectPackage(root, packages);
-            if (!detected)
-                throw new Error(`Not in package directory, need specify package name`);
-            pkg = detected;
-        }
+        const entryPackages = packageNames.map(confirmPublishPackage);
         // 生成所有需要更新的相关包的更新队列，依次发布新版
-        const updates = [];
-        const queue = analytics_1.arrangePublishQueue(new Map([[pkg.name, versionKeyword]]), packages, dependencies);
-        for (const [packageName, newVersion] of queue.entries()) {
+        const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates])), packages, dependencies);
+        for (const [packageName, record] of queue.entries()) {
             const pkg = packages.get(packageName);
-            const prevVersion = pkg.version;
-            pkg.version = newVersion;
-            // 此包的依赖可能也在此次更新队列里，版本号也变化了，那么在此也要更新依赖的版本号
-            const updatedDependencies = [];
-            for (const [dep, depVersion] of pkg.dependencies) {
-                if (queue.has(dep)) {
-                    const depNewVersion = analytics_1.parseVersion(depVersion).prefix + queue.get(dep);
-                    pkg.dependencies.set(dep, depNewVersion);
-                    updatedDependencies.push({ name: dep, prevVersion: pkg.dependencies.get(dep), newVersion: depNewVersion });
-                }
+            pkg.version = record.newVersion;
+            for (const depRecord of record.dependencies.values()) {
+                pkg.dependencies.set(depRecord.name, depRecord.newVersion);
             }
-            updates.push({
-                name: packageName,
-                prevVersion,
-                newVersion,
-                dependencies: updatedDependencies
-            });
         }
-        logging_1.default(`\nUpdates:\n${updates.map(u => `${u.name}: ${u.prevVersion} => ${u.newVersion}${u.dependencies.length
-            ? '\n' + u.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
-            : ''}`).join('\n\n')}\n`);
+        logging_1.default(`\nUpdates:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
+            ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
+            : ''}`).join('\n\n')}\n\n`);
         for (const updatePackageName of queue.keys()) {
-            yield packages_1.publishPackage(packages.get(updatePackageName), updatePackageName !== pkg.name);
+            yield packages_1.publishPackage(packages.get(updatePackageName));
         }
     });
 }

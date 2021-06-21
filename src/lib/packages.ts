@@ -1,15 +1,15 @@
 /**
- * package 信息相关工具函数
+ * package management functions
  */
 import * as path from 'path'
 import * as fs from 'fs'
-import * as childProcess from 'child_process'
 import logging from './logging'
-import { diffVersion } from './analytics'
+import { fileExists, execute } from './lang'
+import { diffVersion } from './dependencies'
 
 
 // ==============================
-// Root
+// Packages Root
 // ==============================
 
 /**
@@ -270,7 +270,7 @@ export async function publishPackage(pkg: Package, shouldSyncDependencies = fals
 
   try {
     if (shouldSyncDependencies) await syncDependencies(pkg)
-    await execute('npm publish', pkg.path)
+    await execute('npm publish', { cwd: pkg.path })
   } catch(e) {
     // 发布失败，还原 package.json 内容
     await writePackage(pkg, true)
@@ -286,7 +286,7 @@ export async function publishPackage(pkg: Package, shouldSyncDependencies = fals
 async function syncDependencies(pkg: Package) {
   let hasYarnBin = true
   try {
-    await execute('yarn --version', pkg.path)
+    await execute('yarn --version', { cwd: pkg.path })
   } catch(e) {
     hasYarnBin = false
   }
@@ -295,34 +295,6 @@ async function syncDependencies(pkg: Package) {
     || ! await fileExists(path.join(pkg.path, 'package-lock.json'))
   )
 
-  if (useYarn) await execute('yarn', pkg.path)
-  else await execute('npm install', pkg.path)
-}
-
-
-function execute(command: string, cwd?: string, stdio: childProcess.StdioOptions='inherit') {
-  return new Promise<void>((resolve, reject) => {
-    logging(cwd ? `Execute: \`${command}\` at ${cwd}` : `Execute: \`${command}\``)
-
-    const proc = childProcess.spawn(command, {
-      ... cwd ? { cwd } : {},
-      shell: true,
-      stdio,
-    })
-
-    proc.on('error', reject)
-    proc.on('exit', code => {
-      if (code !== 0) reject(new Error(`Command execute failed: ${code}`))
-      else resolve()
-    })
-  })
-}
-
-
-function fileExists(filepath: string) {
-  return new Promise<boolean>(resolve => {
-    fs.stat(filepath, (err, stat) => {
-      resolve(stat && stat.isFile())
-    })
-  })
+  const command = useYarn ? 'yarn' : 'npm install'
+  await execute(command, { cwd: pkg.path })
 }

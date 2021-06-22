@@ -1,8 +1,8 @@
 import * as path from 'path'
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
-import { findRoot, getPackages } from '../lib/packages'
-import { resolveDependencies, arrangePublishQueue } from '../lib/dependencies'
+import { Packages } from '../lib/packages'
+import { arrangePublishQueue } from '../lib/dependencies'
 import { SemVer, isSemVerLevel, SemVerLevel } from '../lib/semver'
 
 
@@ -31,9 +31,7 @@ async function publishHandler(args: { packages?: string[], version?: string }) {
 
 
 async function publish(packageNames: string[], versionKeyword: string) {
-  const root = await findRoot()
-  const packages = await getPackages(root)
-  const dependencies = resolveDependencies(packages)
+  const packages = await Packages.load()
 
   // 解析版本更新参数
   let versionUpdates: SemVer | SemVerLevel | null
@@ -51,7 +49,7 @@ async function publish(packageNames: string[], versionKeyword: string) {
     if (packages.has(packageName)) {
       return packages.get(packageName)!
     } else {
-      const packagePath = path.join(root, packageName)
+      const packagePath = path.join(packages.root, packageName)
       const detectedPkg = [...packages.values()].find(p => p.path === packagePath)
       if (detectedPkg) return detectedPkg
       else throw new Error(`Package ${packageName} not exists`)
@@ -63,7 +61,6 @@ async function publish(packageNames: string[], versionKeyword: string) {
   const queue = arrangePublishQueue(
     new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])),
     packages,
-    dependencies
   )
 
   logging(`\nUpdates:\n${[...queue.values()].map(r =>

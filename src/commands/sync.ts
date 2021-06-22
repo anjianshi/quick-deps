@@ -1,8 +1,7 @@
-import * as path from 'path'
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
-import { findRoot, getPackages } from '../lib/packages'
-import { resolveDependencies, arrangePublishQueue } from '../lib/dependencies'
+import { Packages } from '../lib/packages'
+import { arrangePublishQueue } from '../lib/dependencies'
 import type { SemVerLevel } from '../lib/semver'
 
 
@@ -23,9 +22,7 @@ async function syncHandler() {
 
 
 async function executeSync() {
-  const root = await findRoot()
-  const packages = await getPackages(root)
-  const dependencies = resolveDependencies(packages)
+  const packages = await Packages.load()
 
   // 找出依赖过时的包
   const entries = new Map<string, SemVerLevel>()
@@ -45,7 +42,7 @@ async function executeSync() {
   }
 
   // 生成所有需要更新的相关包的更新队列，依次发布新版
-  const queue = arrangePublishQueue(entries, packages, dependencies)
+  const queue = arrangePublishQueue(entries, packages)
 
   if (!queue.size) {
     logging('Everything is OK.')

@@ -89,10 +89,9 @@ function _detectCircularDependency(tree: DependenciesTree, prevLeaves: Set<Depen
 export function arrangePublishQueue(
   entries: Map<string, SemVer | SemVerLevel>,     // 初始要更新的包 Map(packageName => new version or version updates)
   packages: Packages,
-  dependencies: DependenciesTree
 ) {
-  const packages2publish = expandRelateds([...entries.keys()], packages, dependencies)
-  return computePublishQueue(packages2publish, entries, packages, dependencies)
+  const packages2publish = expandRelateds([...entries.keys()], packages)
+  return computePublishQueue(packages2publish, entries, packages)
 }
 
 
@@ -102,7 +101,7 @@ export function arrangePublishQueue(
 type RelatedRecord = Set<string | null>
 type RelatedRecords = Map<string, RelatedRecord>   // packageName => 经由哪些包被加入到相关列表里，entry 包这里会有一项 null
 
-function expandRelateds(entryPackageNames: string[], packages: Packages, dependencies: DependenciesTree) {
+function expandRelateds(entryPackageNames: string[], packages: Packages) {
   const relateds: RelatedRecords = new Map()
 
   function expand(packageName: string, fromPackage: string | null) {
@@ -113,7 +112,7 @@ function expandRelateds(entryPackageNames: string[], packages: Packages, depende
       relateds.set(packageName, new Set([fromPackage]))
 
       // 依赖此包的包加入相关包列表
-      const packageUsedBy = dependencies.get(packageName)?.usedBy
+      const packageUsedBy = packages.dependencies.get(packageName)?.usedBy
       for(const usedByPackage of packageUsedBy?.keys() ?? []) expand(usedByPackage, packageName)
     } else {
       // 此包已加入过列表，则只更新一下引用记录
@@ -155,14 +154,13 @@ function computePublishQueue(
   packages2publish: RelatedRecords,
   entries: Map<string, SemVer | SemVerLevel>,
   packages: Packages,
-  dependencies: DependenciesTree
 ): Map<string, PublishRecord> {
   const computed = new Map<string, PublishComputeResult>()
   function compute(packageName: string) {
     if (computed.has(packageName)) return
     const pkg = packages.get(packageName)!
 
-    const dependenciesWillPublish = [...dependencies.get(packageName)?.dependencies.keys() ?? []]
+    const dependenciesWillPublish = [...packages.dependencies.get(packageName)?.dependencies.keys() ?? []]
       .filter(name => packages2publish.has(name))
 
     let weights = 1

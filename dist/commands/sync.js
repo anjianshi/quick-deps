@@ -30,9 +30,7 @@ function syncHandler() {
 }
 function executeSync() {
     return __awaiter(this, void 0, void 0, function* () {
-        const root = yield packages_1.findRoot();
-        const packages = yield packages_1.getPackages(root);
-        const dependencies = dependencies_1.resolveDependencies(packages);
+        const packages = yield packages_1.Packages.load();
         // 找出依赖过时的包
         const entries = new Map();
         const entriesAddedBy = new Map();
@@ -50,7 +48,7 @@ function executeSync() {
             }
         }
         // 生成所有需要更新的相关包的更新队列，依次发布新版
-        const queue = dependencies_1.arrangePublishQueue(entries, packages, dependencies);
+        const queue = dependencies_1.arrangePublishQueue(entries, packages);
         if (!queue.size) {
             logging_1.default('Everything is OK.');
         }

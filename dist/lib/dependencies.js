@@ -65,12 +65,12 @@ function _detectCircularDependency(tree, prevLeaves) {
  * (一个包更新后，依赖它的包也要跟着更新，且这些包发布要有先后顺序，因此需要这样一个计算函数)
  */
 function arrangePublishQueue(entries, // 初始要更新的包 Map(packageName => new version or version updates)
-packages, dependencies) {
-    const packages2publish = expandRelateds([...entries.keys()], packages, dependencies);
-    return computePublishQueue(packages2publish, entries, packages, dependencies);
+packages) {
+    const packages2publish = expandRelateds([...entries.keys()], packages);
+    return computePublishQueue(packages2publish, entries, packages);
 }
 exports.arrangePublishQueue = arrangePublishQueue;
-function expandRelateds(entryPackageNames, packages, dependencies) {
+function expandRelateds(entryPackageNames, packages) {
     const relateds = new Map();
     function expand(packageName, fromPackage) {
         var _a, _b;
@@ -80,7 +80,7 @@ function expandRelateds(entryPackageNames, packages, dependencies) {
             // 此包加入相关包列表
             relateds.set(packageName, new Set([fromPackage]));
             // 依赖此包的包加入相关包列表
-            const packageUsedBy = (_a = dependencies.get(packageName)) === null || _a === void 0 ? void 0 : _a.usedBy;
+            const packageUsedBy = (_a = packages.dependencies.get(packageName)) === null || _a === void 0 ? void 0 : _a.usedBy;
             for (const usedByPackage of (_b = packageUsedBy === null || packageUsedBy === void 0 ? void 0 : packageUsedBy.keys()) !== null && _b !== void 0 ? _b : [])
                 expand(usedByPackage, packageName);
         }
@@ -96,14 +96,14 @@ function expandRelateds(entryPackageNames, packages, dependencies) {
  * 计算待发布各包的发布顺序和发布版本号
  */
 const semVerMap = { major: 2, minor: 1, patch: 0 };
-function computePublishQueue(packages2publish, entries, packages, dependencies) {
+function computePublishQueue(packages2publish, entries, packages) {
     const computed = new Map();
     function compute(packageName) {
         var _a, _b;
         if (computed.has(packageName))
             return;
         const pkg = packages.get(packageName);
-        const dependenciesWillPublish = [...(_b = (_a = dependencies.get(packageName)) === null || _a === void 0 ? void 0 : _a.dependencies.keys()) !== null && _b !== void 0 ? _b : []]
+        const dependenciesWillPublish = [...(_b = (_a = packages.dependencies.get(packageName)) === null || _a === void 0 ? void 0 : _a.dependencies.keys()) !== null && _b !== void 0 ? _b : []]
             .filter(name => packages2publish.has(name));
         let weights = 1;
         let semVerLevel = 'patch';

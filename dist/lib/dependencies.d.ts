@@ -19,7 +19,7 @@ export declare function resolveDependencies(packages: Packages): DependenciesTre
  * (一个包更新后，依赖它的包也要跟着更新，且这些包发布要有先后顺序，因此需要这样一个计算函数)
  */
 export declare function arrangePublishQueue(entries: Map<string, SemVer | SemVerLevel>, // 初始要更新的包 Map(packageName => new version or version updates)
-packages: Packages, dependencies: DependenciesTree): Map<string, PublishRecord>;
+packages: Packages): Map<string, PublishRecord>;
 /**
  * 返回与指定包有关联（依赖或间接依赖）的所有包
  */

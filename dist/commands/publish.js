@@ -41,9 +41,7 @@ function publishHandler(args) {
 }
 function publish(packageNames, versionKeyword) {
     return __awaiter(this, void 0, void 0, function* () {
-        const root = yield packages_1.findRoot();
-        const packages = yield packages_1.getPackages(root);
-        const dependencies = dependencies_1.resolveDependencies(packages);
+        const packages = yield packages_1.Packages.load();
         // 解析版本更新参数
         let versionUpdates;
         if (versionKeyword) {
@@ -62,7 +60,7 @@ function publish(packageNames, versionKeyword) {
                 return packages.get(packageName);
             }
             else {
-                const packagePath = path.join(root, packageName);
+                const packagePath = path.join(packages.root, packageName);
                 const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
                 if (detectedPkg)
                     return detectedPkg;
@@ -72,7 +70,7 @@ function publish(packageNames, versionKeyword) {
         }
         const entryPackages = packageNames.map(confirmPublishPackage);
         // 生成所有需要更新的相关包的更新队列，依次发布新版
-        const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])), packages, dependencies);
+        const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])), packages);
         logging_1.default(`\nUpdates:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
             ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
             : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? 'entry' : v).join(', ')}`).join('\n\n')}\n\n`);

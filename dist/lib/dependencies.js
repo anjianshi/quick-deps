@@ -70,25 +70,26 @@ packages, dependencies) {
     return computePublishQueue(packages2publish, entries, packages, dependencies);
 }
 exports.arrangePublishQueue = arrangePublishQueue;
-/**
- * 返回与指定包有关联（依赖或间接依赖）的所有包
- */
-function expandRelateds(packageNames, packages, dependencies) {
-    const relateds = new Set();
-    function expand(packageName) {
-        var _a;
-        if (packages.has(packageName) && !relateds.has(packageName)) {
-            // 当前包加入相关包列表
-            relateds.add(packageName);
+function expandRelateds(entryPackageNames, packages, dependencies) {
+    const relateds = new Map();
+    function expand(packageName, fromPackage) {
+        var _a, _b;
+        if (!packages.has(packageName))
+            return;
+        if (!relateds.has(packageName)) {
+            // 此包加入相关包列表
+            relateds.set(packageName, new Set([fromPackage]));
             // 依赖此包的包加入相关包列表
             const packageUsedBy = (_a = dependencies.get(packageName)) === null || _a === void 0 ? void 0 : _a.usedBy;
-            if (packageUsedBy) {
-                for (const usedByPackage of packageUsedBy.keys())
-                    expand(usedByPackage);
-            }
+            for (const usedByPackage of (_b = packageUsedBy === null || packageUsedBy === void 0 ? void 0 : packageUsedBy.keys()) !== null && _b !== void 0 ? _b : [])
+                expand(usedByPackage, packageName);
+        }
+        else {
+            // 此包已加入过列表，则只更新一下引用记录
+            relateds.get(packageName).add(fromPackage);
         }
     }
-    packageNames.forEach(expand);
+    entryPackageNames.forEach(name => expand(name, null));
     return relateds;
 }
 /**
@@ -120,7 +121,7 @@ function computePublishQueue(packages2publish, entries, packages, dependencies) 
         );
         computed.set(packageName, { name: packageName, weights, version: newVersion });
     }
-    packages2publish.forEach(compute);
+    [...packages2publish.keys()].forEach(compute);
     // 按更新顺序对包列表进行排序
     const sorted = new Map([...computed.values()].sort((a, b) => a.weights - b.weights)
         .map(r => [r.name, r]));
@@ -136,6 +137,15 @@ function computePublishQueue(packages2publish, entries, packages, dependencies) 
                 continue;
             depRecords.push({ name: depName, prevVersion: depPrevVersion, newVersion: depNewVersion });
         }
-        return [packageName, { name: packageName, prevVersion, newVersion, dependencies: depRecords }];
+        return [
+            packageName,
+            {
+                name: packageName,
+                prevVersion,
+                newVersion,
+                dependencies: depRecords,
+                addedBy: packages2publish.get(packageName)
+            }
+        ];
     }));
 }

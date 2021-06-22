@@ -47,3 +47,11 @@ export function execute(command: string, options: childProcess.SpawnOptions) {
     })
   })
 }
+
+
+/**
+ * 判断一个对象是否为空
+ */
+export function isEmpty<O extends { [key: string]: any }>(obj?: O) {
+  return !obj || Object.keys(obj).length === 0
+}

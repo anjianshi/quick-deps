@@ -21,32 +21,42 @@ export class SemVer {
     const match = version.match(pattern)
     if (match) {
       const [prefix = '', rawMajor, rawMinor, rawPatch] = match.slice(1)
-      const [major, minor, patch] = [rawMajor, rawMinor, rawPatch].map(toNumber)
-      return new SemVer(prefix, major, minor, patch)
+      const [major, minor, patch] = [rawMajor, rawMinor, rawPatch].map(v => parseInt(v, 10))
+      return new SemVer({ prefix, major, minor, patch })
     }
     return null
   }
 
-  constructor(
-    public prefix: string,
-    public major: number,
-    public minor: number,
-    public patch: number
-  ) {}
+  public prefix: string
+  public major: number
+  public minor: number
+  public patch: number
+
+  constructor(data: {
+    prefix?: string,
+    major: number,
+    minor: number,
+    patch: number
+  }) {
+    this.prefix = data.prefix ?? ''
+    this.major = data.major
+    this.minor = data.minor
+    this.patch = data.patch
+  }
 
   /**
    * 判断两个版本号是否有差别
    *
    * 版本号相同：             { diff: 0 }
-   * 当前版本高于 other：     { diff: 1, level }
-   * 当前版本低于 other：     { diff: -1, level }
+   * 当前版本高于 that：      { diff: 1, level }
+   * 当前版本低于 that：      { diff: -1, level }
    *
    * 目前没有对 prefix 进行对比（注意：以后如果真的有需要对比，level 的取值要加上 prefix）
    */
-  diff(other: SemVer): SemVerDiff {
+  diff(that: SemVer): SemVerDiff {
     for(const level of ['major', 'minor', 'patch'] as SemVerLevel[]) {
-      if (this[level] > other[level]) return { diff: 1, level }
-      else if (this[level] < other[level]) return { diff: -1, level }
+      if (this[level] > that[level]) return { diff: 1, level }
+      else if (this[level] < that[level]) return { diff: -1, level }
     }
     return { diff: 0 }
   }
@@ -57,21 +67,22 @@ export class SemVer {
   update(updates: SemVer | SemVerLevel) {
     if (typeof updates !== 'string') return updates
 
-    let { prefix, major, minor, patch } = this
-    if (updates === 'major') return new SemVer(prefix, major + 1, 0, 0)
-    else if (updates === 'minor') return new SemVer(prefix, major, minor + 1, 0)
-    else return new SemVer(prefix, major, minor, patch + 1)
+    const { prefix, major, minor, patch } = this
+    if (updates === 'major') return new SemVer({ prefix, major: major + 1, minor: 0, patch: 0 })
+    else if (updates === 'minor') return new SemVer({ prefix, major, minor: minor + 1, patch: 0 })
+    else return new SemVer({ prefix, major, minor, patch: patch + 1 })
+  }
+
+  /**
+   * 返回一个带指定 prefix 的新 SemVer 对象
+   */
+  withPrefix(prefix: string) {
+    return new SemVer({ ...this, prefix })
   }
 
   toString() {
     return `${this.prefix}${this.major}.${this.minor}.${this.patch}`
   }
-}
-
-
-function toNumber(str: string) {
-  const parsed = parseInt(str, 10)
-  return isFinite(parsed) ? parsed : 0
 }
 
 

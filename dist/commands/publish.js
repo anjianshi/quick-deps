@@ -22,6 +22,7 @@ exports.default = new quick_args_1.Command({
 }).rest({
     name: 'packages',
     describe: 'specify packages to publish, pass package name or package directory name',
+    required: false,
 }).named({
     name: 'version',
     short: 'v',
@@ -44,11 +45,17 @@ function publish(packageNames, versionKeyword) {
         const packages = yield packages_1.getPackages(root);
         const dependencies = dependencies_1.resolveDependencies(packages);
         // 解析版本更新参数
-        const versionUpdates = semver_1.isSemVerLevel(versionKeyword)
-            ? versionKeyword
-            : semver_1.SemVer.parse(versionKeyword);
-        if (!versionUpdates)
-            throw new Error(`Invalid version keyword ${versionKeyword}`);
+        let versionUpdates;
+        if (versionKeyword) {
+            versionUpdates = semver_1.isSemVerLevel(versionKeyword)
+                ? versionKeyword
+                : semver_1.SemVer.parse(versionKeyword);
+            if (!versionUpdates)
+                throw new Error(`Invalid version keyword ${versionKeyword}`);
+        }
+        else {
+            versionUpdates = null;
+        }
         // 确认要发新版的 package
         function confirmPublishPackage(packageName) {
             if (packages.has(packageName)) {
@@ -65,19 +72,12 @@ function publish(packageNames, versionKeyword) {
         }
         const entryPackages = packageNames.map(confirmPublishPackage);
         // 生成所有需要更新的相关包的更新队列，依次发布新版
-        const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates])), packages, dependencies);
-        for (const [packageName, record] of queue.entries()) {
-            const pkg = packages.get(packageName);
-            pkg.version = record.newVersion;
-            for (const depRecord of record.dependencies.values()) {
-                pkg.dependencies.set(depRecord.name, depRecord.newVersion);
-            }
-        }
+        const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])), packages, dependencies);
         logging_1.default(`\nUpdates:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
             ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
-            : ''}`).join('\n\n')}\n\n`);
-        for (const updatePackageName of queue.keys()) {
-            yield packages_1.publishPackage(packages.get(updatePackageName));
+            : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? 'entry' : v).join(', ')}`).join('\n\n')}\n\n`);
+        for (const [packageName, record] of queue.entries()) {
+            yield packages.get(packageName).publish(record);
         }
     });
 }

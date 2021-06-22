@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.execute = exports.isSamePath = exports.fileExists = void 0;
+exports.isEmpty = exports.execute = exports.isSamePath = exports.fileExists = void 0;
 const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
@@ -43,3 +43,10 @@ function execute(command, options) {
     });
 }
 exports.execute = execute;
+/**
+ * 判断一个对象是否为空
+ */
+function isEmpty(obj) {
+    return !obj || Object.keys(obj).length === 0;
+}
+exports.isEmpty = isEmpty;

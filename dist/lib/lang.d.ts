@@ -15,3 +15,9 @@ export declare function isSamePath(a: string, b: string): boolean;
  * - reject(err): execution failed
  */
 export declare function execute(command: string, options: childProcess.SpawnOptions): Promise<void>;
+/**
+ * 判断一个对象是否为空
+ */
+export declare function isEmpty<O extends {
+    [key: string]: any;
+}>(obj?: O): boolean;

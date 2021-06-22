@@ -20,13 +20,18 @@ export declare function resolveDependencies(packages: Packages): DependenciesTre
  */
 export declare function arrangePublishQueue(entries: Map<string, SemVer | SemVerLevel>, // 初始要更新的包 Map(packageName => new version or version updates)
 packages: Packages, dependencies: DependenciesTree): Map<string, PublishRecord>;
-interface PublishRecord {
+/**
+ * 返回与指定包有关联（依赖或间接依赖）的所有包
+ */
+declare type RelatedRecord = Set<string | null>;
+export interface PublishRecord {
     name: string;
     prevVersion: SemVer;
     newVersion: SemVer;
     dependencies: PublishDependenciesRecord[];
+    addedBy: RelatedRecord;
 }
-interface PublishDependenciesRecord {
+export interface PublishDependenciesRecord {
     name: string;
     prevVersion: SemVer;
     newVersion: SemVer;

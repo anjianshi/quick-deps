@@ -35,30 +35,32 @@ function executeSync() {
         const dependencies = dependencies_1.resolveDependencies(packages);
         // 找出依赖过时的包
         const entries = new Map();
+        const entriesAddedBy = new Map();
         for (const pkg of packages.values()) {
             for (const [dep, depVersion] of pkg.dependencies.entries()) {
                 const depPackage = packages.get(dep);
                 if (!depPackage)
                     continue;
                 const versionDiff = depVersion.diff(depPackage.version);
-                if (versionDiff.diff === -1)
+                if (versionDiff.diff === -1) {
                     entries.set(pkg.name, versionDiff.level);
+                    entriesAddedBy.set(pkg.name, dep);
+                    pkg.dependencies.set(dep, depPackage.version.withPrefix(depVersion.prefix));
+                }
             }
         }
         // 生成所有需要更新的相关包的更新队列，依次发布新版
         const queue = dependencies_1.arrangePublishQueue(entries, packages, dependencies);
-        for (const [packageName, record] of queue.entries()) {
-            const pkg = packages.get(packageName);
-            pkg.version = record.newVersion;
-            for (const depRecord of record.dependencies.values()) {
-                pkg.dependencies.set(depRecord.name, depRecord.newVersion);
-            }
+        if (!queue.size) {
+            logging_1.default('Everything is OK.');
         }
-        logging_1.default(`\nSync:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
-            ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
-            : ''}`).join('\n\n')}\n\n`);
-        for (const updatePackageName of queue.keys()) {
-            yield packages_1.publishPackage(packages.get(updatePackageName));
+        else {
+            logging_1.default(`\nSync:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
+                ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
+                : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? entriesAddedBy.get(r.name) : v).join(', ')}`).join('\n\n')}\n\n`);
+        }
+        for (const [packageName, record] of queue.entries()) {
+            packages.get(packageName).publish(record);
         }
     });
 }

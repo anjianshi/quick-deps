@@ -1,5 +1,5 @@
 /**
- * 实现对包依赖关系等的分析
+ * Analytics packages, eg. package dependency relationship
  */
 import type { Packages } from './packages'
 import type { SemVerLevel } from './semver'
@@ -7,15 +7,16 @@ import { SemVer } from './semver'
 
 
 /**
- * 生成 packages 间的依赖关系树
+ * Generate package dependency relationship tree
  */
 export type DependenciesTree = Map<string, DependenciesLeaf>
 
-// 通过 dependencies、usedBy 两个链表可实现正向和反向索引依赖关系
+// The two trees `dependencies` and `usedBy` that have inverse direction,
+// was used to quickly traverse dependencies in any direction.
 interface DependenciesLeaf {
   name: string,                       // package name
-  dependencies: DependenciesTree,     // 此 package 的直接依赖项
-  usedBy: DependenciesTree,           // 直接依赖此 package 的项目
+  dependencies: DependenciesTree,     // packages directly depended by this package（此 package 的直接依赖项）
+  usedBy: DependenciesTree,           // packages directly depends this package（直接依赖此 package 的项目）
 }
 
 export function resolveDependencies(packages: Packages): DependenciesTree {

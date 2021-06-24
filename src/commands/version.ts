@@ -5,7 +5,7 @@ import { Command } from 'quick-args'
 
 export default new Command<object>({
   name: 'version',
-  describe: "show this tool's version",
+  describe: "Show this tool's version",
   handler() {
     const packageJSON = path.resolve(__dirname, '../../package.json')
     const raw = fs.readFileSync(packageJSON).toString()

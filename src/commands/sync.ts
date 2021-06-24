@@ -1,7 +1,7 @@
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
 import { Packages } from '../lib/packages'
-import { arrangePublishQueue } from '../lib/dependencies'
+import { arrangePublishQueue, PublishRecord } from '../lib/dependencies'
 import type { SemVerLevel } from '../lib/semver'
 
 
@@ -24,7 +24,7 @@ async function syncHandler() {
 async function executeSync() {
   const packages = await Packages.load()
 
-  // 找出依赖过时的包
+  // find packages that has outdate dependencies
   const entries = new Map<string, SemVerLevel>()
   const entriesAddedBy = new Map<string, string>()
   for (const pkg of packages.values()) {
@@ -41,22 +41,32 @@ async function executeSync() {
     }
   }
 
-  // 生成所有需要更新的相关包的更新队列，依次发布新版
+  // generate publish queue for outdated packages, and packages that depends theme.
   const queue = arrangePublishQueue(entries, packages)
 
-  if (!queue.size) {
-    logging('Everything is OK.')
-  } else {
-    logging(`\nSync:\n${[...queue.values()].map(r =>
-      `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
-        ? '\n' + r.dependencies.map(d =>
-          `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`
-        ).join('\n')
-        : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? entriesAddedBy.get(r.name)! : v).join(', ')}`
-    ).join('\n\n')}\n\n`)
-  }
+  logging(makeSyncLog(queue, entriesAddedBy))
 
   for(const [packageName, record] of queue.entries()) {
     packages.get(packageName)!.publish(record)
   }
+}
+
+
+function makeSyncLog(queue: Map<string, PublishRecord>, entriesAddedBy: Map<string, string>) {
+  if (!queue.size) return 'Everything is OK.'
+
+  function makePackageLog(record: PublishRecord) {
+    const main = `${record.name}: ${record.prevVersion} => ${record.newVersion}`
+    const dependencies = record.dependencies.length
+      ? '\n' + record.dependencies.map(dep => `  |- ${dep.name}: ${dep.prevVersion} => ${dep.newVersion}`).join('\n')
+      : ''
+    const source = `\nAdded by: ${[...record.addedBy].map(v => v === null ? entriesAddedBy.get(r.name)! : v).join(', ')}`
+    return `${main}${dependencies}${source}`
+  }
+
+  const packageLogs = [...queue.values()]
+    .map(makePackageLog)
+    .join('\n\n')
+
+  return `\nSync:\n${packageLogs}\n\n`
 }

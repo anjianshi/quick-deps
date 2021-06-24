@@ -2,22 +2,22 @@ import * as path from 'path'
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
 import { Packages } from '../lib/packages'
-import { arrangePublishQueue } from '../lib/dependencies'
+import { arrangePublishQueue, PublishRecord } from '../lib/dependencies'
 import { SemVer, isSemVerLevel, SemVerLevel } from '../lib/semver'
 
 
 export default new Command({
   name: 'publish',
-  describe: "publish a new version of specified package",
+  describe: "Publish new version for specified packages",
   handler: publishHandler
 }).rest({
   name: 'packages',
-  describe: 'specify packages to publish, pass package name or package directory name',
+  describe: 'Specify packages to publish, pass package name or package directory name',
   required: false,
 }).named({
   name: 'version',
   short: 'v',
-  describe: 'specify new version or increment type: major minor patch',
+  describe: 'Specify new version or increment type: major minor patch',
 })
 
 
@@ -30,48 +30,63 @@ async function publishHandler(args: { packages?: string[], version?: string }) {
 }
 
 
-async function publish(packageNames: string[], versionKeyword: string) {
+async function publish(packageKeywords: string[], rawVersionUpdates: string) {
   const packages = await Packages.load()
 
-  // 解析版本更新参数
+  // parse version update settings
   let versionUpdates: SemVer | SemVerLevel | null
-  if (versionKeyword) {
-    versionUpdates = isSemVerLevel(versionKeyword)
-      ? versionKeyword
-      : SemVer.parse(versionKeyword)
-    if (!versionUpdates) throw new Error(`Invalid version keyword ${versionKeyword}`)
+  if (rawVersionUpdates) {
+    versionUpdates = isSemVerLevel(rawVersionUpdates)
+      ? rawVersionUpdates
+      : SemVer.parse(rawVersionUpdates)
+    if (!versionUpdates) throw new Error(`Invalid version description ${rawVersionUpdates}`)
   } else {
     versionUpdates = null
   }
 
-  // 确认要发新版的 package
-  function confirmPublishPackage(packageName: string) {
-    if (packages.has(packageName)) {
-      return packages.get(packageName)!
-    } else {
-      const packagePath = path.join(packages.root, packageName)
-      const detectedPkg = [...packages.values()].find(p => p.path === packagePath)
-      if (detectedPkg) return detectedPkg
-      else throw new Error(`Package ${packageName} not exists`)
-    }
-  }
-  const entryPackages = packageNames.map(confirmPublishPackage)
+  // confirm packages to publish
+  function confirmPublishPackage(keyword: string) {
+    // if the keyword exactly a package's name, return it directly
+    if (packages.has(keyword)) return packages.get(keyword)!
 
-  // 生成所有需要更新的相关包的更新队列，依次发布新版
+    // confirm is the keyword is a packages's directory name
+    const packagePath = path.join(packages.root, keyword)
+    const detectedPkg = [...packages.values()].find(p => p.path === packagePath)
+    if (detectedPkg) return detectedPkg
+
+    // cannot find the package
+    throw new Error(`Package ${keyword} not exists`)
+  }
+  const entryPackages = packageKeywords.map(confirmPublishPackage)
+
+  // generate publish queue for entry packages and the packages depends them
   const queue = arrangePublishQueue(
     new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])),
     packages,
   )
 
-  logging(`\nUpdates:\n${[...queue.values()].map(r =>
-    `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
-      ? '\n' + r.dependencies.map(d =>
-        `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`
-      ).join('\n')
-      : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? 'entry' : v).join(', ')}`
-  ).join('\n\n')}\n\n`)
+  logging(makePublishLog(queue))
 
+  // publish packages in queue
   for(const [packageName, record] of queue.entries()) {
     await packages.get(packageName)!.publish(record)
   }
+}
+
+
+function makePublishLog(queue: Map<string, PublishRecord>) {
+  function makePackageLog(record: PublishRecord) {
+    const main = `${record.name}: ${record.prevVersion} => ${record.newVersion}`
+    const dependencies = record.dependencies.length
+      ? '\n' + record.dependencies.map(dep => `  |- ${dep.name}: ${dep.prevVersion} => ${dep.newVersion}`).join('\n')
+      : ''
+    const source = `\nAdded by: ${[...record.addedBy].map(v => v === null ? 'entry' : v).join(', ')}`
+    return `${main}${dependencies}${source}`
+  }
+
+  const packageLogs = [...queue.values()]
+    .map(makePackageLog)
+    .join('\n\n')
+
+  return `\nUpdates:\n${packageLogs}\n\n`
 }

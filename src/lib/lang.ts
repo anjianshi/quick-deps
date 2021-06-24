@@ -17,7 +17,7 @@ export function fileExists(filepath: string) {
 
 
 /**
- * 判断两个字符串是否是同一个路径
+ * Detect if two string target's to the same path
  */
 export function isSamePath(a: string, b: string) {
   return path.resolve(a) === path.resolve(b)
@@ -50,7 +50,7 @@ export function execute(command: string, options: childProcess.SpawnOptions) {
 
 
 /**
- * 判断一个对象是否为空
+ * Detect if an object is empty
  */
 export function isEmpty<O extends { [key: string]: any }>(obj?: O) {
   return !obj || Object.keys(obj).length === 0

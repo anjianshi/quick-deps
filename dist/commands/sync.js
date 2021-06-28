@@ -31,7 +31,7 @@ function syncHandler() {
 function executeSync() {
     return __awaiter(this, void 0, void 0, function* () {
         const packages = yield packages_1.Packages.load();
-        // 找出依赖过时的包
+        // find packages that has outdate dependencies
         const entries = new Map();
         const entriesAddedBy = new Map();
         for (const pkg of packages.values()) {
@@ -47,18 +47,27 @@ function executeSync() {
                 }
             }
         }
-        // 生成所有需要更新的相关包的更新队列，依次发布新版
+        // generate publish queue for outdated packages, and packages that depends theme.
         const queue = dependencies_1.arrangePublishQueue(entries, packages);
-        if (!queue.size) {
-            logging_1.default('Everything is OK.');
-        }
-        else {
-            logging_1.default(`\nSync:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
-                ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
-                : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? entriesAddedBy.get(r.name) : v).join(', ')}`).join('\n\n')}\n\n`);
-        }
+        logging_1.default(makeSyncLog(queue, entriesAddedBy));
         for (const [packageName, record] of queue.entries()) {
             packages.get(packageName).publish(record);
         }
     });
+}
+function makeSyncLog(queue, entriesAddedBy) {
+    if (!queue.size)
+        return 'Everything is OK.';
+    function makePackageLog(record) {
+        const main = `${record.name}: ${record.prevVersion} => ${record.newVersion}`;
+        const dependencies = record.dependencies.length
+            ? '\n' + record.dependencies.map(dep => `  |- ${dep.name}: ${dep.prevVersion} => ${dep.newVersion}`).join('\n')
+            : '';
+        const source = `\nAdded by: ${[...record.addedBy].map(v => v === null ? entriesAddedBy.get(record.name) : v).join(', ')}`;
+        return `${main}${dependencies}${source}`;
+    }
+    const packageLogs = [...queue.values()]
+        .map(makePackageLog)
+        .join('\n\n');
+    return `\nSync:\n${packageLogs}\n\n`;
 }

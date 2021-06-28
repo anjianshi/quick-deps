@@ -5,7 +5,7 @@ const fs = require("fs");
 const quick_args_1 = require("quick-args");
 exports.default = new quick_args_1.Command({
     name: 'version',
-    describe: "show this tool's version",
+    describe: "Show this tool's version",
     handler() {
         const packageJSON = path.resolve(__dirname, '../../package.json');
         const raw = fs.readFileSync(packageJSON).toString();

@@ -60,7 +60,7 @@ function makeSyncLog(queue: Map<string, PublishRecord>, entriesAddedBy: Map<stri
     const dependencies = record.dependencies.length
       ? '\n' + record.dependencies.map(dep => `  |- ${dep.name}: ${dep.prevVersion} => ${dep.newVersion}`).join('\n')
       : ''
-    const source = `\nAdded by: ${[...record.addedBy].map(v => v === null ? entriesAddedBy.get(r.name)! : v).join(', ')}`
+    const source = `\nAdded by: ${[...record.addedBy].map(v => v === null ? entriesAddedBy.get(record.name)! : v).join(', ')}`
     return `${main}${dependencies}${source}`
   }
 

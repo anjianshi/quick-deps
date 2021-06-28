@@ -1,11 +1,11 @@
 /**
- * 实现对包依赖关系等的分析
+ * Analytics packages, eg. package dependency relationship
  */
 import type { Packages } from './packages';
 import type { SemVerLevel } from './semver';
 import { SemVer } from './semver';
 /**
- * 生成 packages 间的依赖关系树
+ * Generate package dependency relationship tree
  */
 export declare type DependenciesTree = Map<string, DependenciesLeaf>;
 interface DependenciesLeaf {

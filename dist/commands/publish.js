@@ -17,16 +17,16 @@ const dependencies_1 = require("../lib/dependencies");
 const semver_1 = require("../lib/semver");
 exports.default = new quick_args_1.Command({
     name: 'publish',
-    describe: "publish a new version of specified package",
+    describe: "Publish new version for specified packages",
     handler: publishHandler
 }).rest({
     name: 'packages',
-    describe: 'specify packages to publish, pass package name or package directory name',
+    describe: 'Specify packages to publish, pass package name or package directory name',
     required: false,
 }).named({
     name: 'version',
     short: 'v',
-    describe: 'specify new version or increment type: major minor patch',
+    describe: 'Specify new version or increment type: major minor patch',
 });
 function publishHandler(args) {
     var _a, _b;
@@ -39,43 +39,55 @@ function publishHandler(args) {
         }
     });
 }
-function publish(packageNames, versionKeyword) {
+function publish(packageKeywords, rawVersionUpdates) {
     return __awaiter(this, void 0, void 0, function* () {
         const packages = yield packages_1.Packages.load();
-        // 解析版本更新参数
+        // parse version update settings
         let versionUpdates;
-        if (versionKeyword) {
-            versionUpdates = semver_1.isSemVerLevel(versionKeyword)
-                ? versionKeyword
-                : semver_1.SemVer.parse(versionKeyword);
+        if (rawVersionUpdates) {
+            versionUpdates = semver_1.isSemVerLevel(rawVersionUpdates)
+                ? rawVersionUpdates
+                : semver_1.SemVer.parse(rawVersionUpdates);
             if (!versionUpdates)
-                throw new Error(`Invalid version keyword ${versionKeyword}`);
+                throw new Error(`Invalid version description ${rawVersionUpdates}`);
         }
         else {
             versionUpdates = null;
         }
-        // 确认要发新版的 package
-        function confirmPublishPackage(packageName) {
-            if (packages.has(packageName)) {
-                return packages.get(packageName);
-            }
-            else {
-                const packagePath = path.join(packages.root, packageName);
-                const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
-                if (detectedPkg)
-                    return detectedPkg;
-                else
-                    throw new Error(`Package ${packageName} not exists`);
-            }
+        // confirm packages to publish
+        function confirmPublishPackage(keyword) {
+            // if the keyword exactly a package's name, return it directly
+            if (packages.has(keyword))
+                return packages.get(keyword);
+            // confirm is the keyword is a packages's directory name
+            const packagePath = path.join(packages.root, keyword);
+            const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
+            if (detectedPkg)
+                return detectedPkg;
+            // cannot find the package
+            throw new Error(`Package ${keyword} not exists`);
         }
-        const entryPackages = packageNames.map(confirmPublishPackage);
-        // 生成所有需要更新的相关包的更新队列，依次发布新版
+        const entryPackages = packageKeywords.map(confirmPublishPackage);
+        // generate publish queue for entry packages and the packages depends them
         const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])), packages);
-        logging_1.default(`\nUpdates:\n${[...queue.values()].map(r => `${r.name}: ${r.prevVersion} => ${r.newVersion}${r.dependencies.length
-            ? '\n' + r.dependencies.map(d => `  |- ${d.name}: ${d.prevVersion} => ${d.newVersion}`).join('\n')
-            : ''}\nAdded by: ${[...r.addedBy].map(v => v === null ? 'entry' : v).join(', ')}`).join('\n\n')}\n\n`);
+        logging_1.default(makePublishLog(queue));
+        // publish packages in queue
         for (const [packageName, record] of queue.entries()) {
             yield packages.get(packageName).publish(record);
         }
     });
+}
+function makePublishLog(queue) {
+    function makePackageLog(record) {
+        const main = `${record.name}: ${record.prevVersion} => ${record.newVersion}`;
+        const dependencies = record.dependencies.length
+            ? '\n' + record.dependencies.map(dep => `  |- ${dep.name}: ${dep.prevVersion} => ${dep.newVersion}`).join('\n')
+            : '';
+        const source = `\nAdded by: ${[...record.addedBy].map(v => v === null ? 'entry' : v).join(', ')}`;
+        return `${main}${dependencies}${source}`;
+    }
+    const packageLogs = [...queue.values()]
+        .map(makePackageLog)
+        .join('\n\n');
+    return `\nUpdates:\n${packageLogs}\n\n`;
 }

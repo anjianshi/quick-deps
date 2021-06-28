@@ -13,8 +13,8 @@ class SemVer {
         this.patch = data.patch;
     }
     /**
-     * 解析 semver 格式的版本号
-     * 对于不合法或不支持的格式，返回 null
+     * Parse semver version number.
+     * Return `null` if it is invalid, or it's format is not supported yet.
      */
     static parse(version) {
         const pattern = /^(>=|>|<=|<|~|\^)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -27,13 +27,14 @@ class SemVer {
         return null;
     }
     /**
-     * 判断两个版本号是否有差别
+     * Compare to another version number, return the difference.
      *
-     * 版本号相同：             { diff: 0 }
-     * 当前版本高于 that：      { diff: 1, level }
-     * 当前版本低于 that：      { diff: -1, level }
+     * same：                         { diff: 0 }
+     * current higher than another：  { diff: 1, level }
+     * current lower than another：   { diff: -1, level }
      *
-     * 目前没有对 prefix 进行对比（注意：以后如果真的有需要对比，level 的取值要加上 prefix）
+     * Currently compare with `prefix` was not supported.
+     * (Remember represent `prefix difference` info `level` field, when implements `prefix compare`)
      */
     diff(that) {
         for (const level of ['major', 'minor', 'patch']) {
@@ -45,7 +46,7 @@ class SemVer {
         return { diff: 0 };
     }
     /**
-     * 根据规则生成新的版本号（返回一个新的 SemVer 对象）
+     * Generate new version number by request. (Returns new SemVer object)
      */
     update(updates) {
         if (typeof updates !== 'string')
@@ -59,7 +60,7 @@ class SemVer {
             return new SemVer({ prefix, major, minor, patch: patch + 1 });
     }
     /**
-     * 返回一个带指定 prefix 的新 SemVer 对象
+     * Returns a SemVer object with specified `prefix`
      */
     withPrefix(prefix) {
         return new SemVer(Object.assign(Object.assign({}, this), { prefix }));

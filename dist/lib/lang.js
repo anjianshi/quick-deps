@@ -17,7 +17,7 @@ function fileExists(filepath) {
 }
 exports.fileExists = fileExists;
 /**
- * 判断两个字符串是否是同一个路径
+ * Detect if two string target's to the same path
  */
 function isSamePath(a, b) {
     return path.resolve(a) === path.resolve(b);
@@ -44,7 +44,7 @@ function execute(command, options) {
 }
 exports.execute = execute;
 /**
- * 判断一个对象是否为空
+ * Detect if an object is empty
  */
 function isEmpty(obj) {
     return !obj || Object.keys(obj).length === 0;

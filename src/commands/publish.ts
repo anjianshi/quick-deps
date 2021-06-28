@@ -1,7 +1,8 @@
 import * as path from 'path'
 import { Command } from 'quick-args'
 import logging from '../lib/logging'
-import { Packages } from '../lib/packages'
+import type { Package } from '../lib/package'
+import { Packages, detectPackage } from '../lib/packages'
 import { arrangePublishQueue, PublishRecord } from '../lib/dependencies'
 import { SemVer, isSemVerLevel, SemVerLevel } from '../lib/semver'
 
@@ -45,19 +46,14 @@ async function publish(packageKeywords: string[], rawVersionUpdates: string) {
   }
 
   // confirm packages to publish
-  function confirmPublishPackage(keyword: string) {
-    // if the keyword exactly a package's name, return it directly
-    if (packages.has(keyword)) return packages.get(keyword)!
-
-    // confirm is the keyword is a packages's directory name
-    const packagePath = path.join(packages.root, keyword)
-    const detectedPkg = [...packages.values()].find(p => p.path === packagePath)
-    if (detectedPkg) return detectedPkg
-
-    // cannot find the package
-    throw new Error(`Package ${keyword} not exists`)
+  let entryPackages: Package[]
+  if (packageKeywords.length) {
+    entryPackages = packageKeywords.map(keyword => confirmPublishPackage(keyword, packages))
+  } else {
+    const detected = detectPackage(packages)
+    if (!detected) throw new Error(`Not in package directory, need specify package name`)
+    entryPackages = [detected]
   }
-  const entryPackages = packageKeywords.map(confirmPublishPackage)
 
   // generate publish queue for entry packages and the packages depends them
   const queue = arrangePublishQueue(
@@ -71,6 +67,23 @@ async function publish(packageKeywords: string[], rawVersionUpdates: string) {
   for(const [packageName, record] of queue.entries()) {
     await packages.get(packageName)!.publish(record)
   }
+}
+
+
+/**
+ * Return the package object corresponding to specified keyword.
+ */
+function confirmPublishPackage(keyword: string, packages: Packages) {
+  // if the keyword exactly a package's name, return it directly
+  if (packages.has(keyword)) return packages.get(keyword)!
+
+  // confirm is the keyword is a packages's directory name
+  const packagePath = path.join(packages.root, keyword)
+  const detectedPkg = [...packages.values()].find(p => p.path === packagePath)
+  if (detectedPkg) return detectedPkg
+
+  // cannot find the package
+  throw new Error(`Package ${keyword} not exists`)
 }
 
 

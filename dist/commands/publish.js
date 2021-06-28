@@ -55,19 +55,16 @@ function publish(packageKeywords, rawVersionUpdates) {
             versionUpdates = null;
         }
         // confirm packages to publish
-        function confirmPublishPackage(keyword) {
-            // if the keyword exactly a package's name, return it directly
-            if (packages.has(keyword))
-                return packages.get(keyword);
-            // confirm is the keyword is a packages's directory name
-            const packagePath = path.join(packages.root, keyword);
-            const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
-            if (detectedPkg)
-                return detectedPkg;
-            // cannot find the package
-            throw new Error(`Package ${keyword} not exists`);
+        let entryPackages;
+        if (packageKeywords.length) {
+            entryPackages = packageKeywords.map(keyword => confirmPublishPackage(keyword, packages));
         }
-        const entryPackages = packageKeywords.map(confirmPublishPackage);
+        else {
+            const detected = packages_1.detectPackage(packages);
+            if (!detected)
+                throw new Error(`Not in package directory, need specify package name`);
+            entryPackages = [detected];
+        }
         // generate publish queue for entry packages and the packages depends them
         const queue = dependencies_1.arrangePublishQueue(new Map(entryPackages.map(pkg => [pkg.name, versionUpdates || pkg.version])), packages);
         logging_1.default(makePublishLog(queue));
@@ -76,6 +73,21 @@ function publish(packageKeywords, rawVersionUpdates) {
             yield packages.get(packageName).publish(record);
         }
     });
+}
+/**
+ * Return the package object corresponding to specified keyword.
+ */
+function confirmPublishPackage(keyword, packages) {
+    // if the keyword exactly a package's name, return it directly
+    if (packages.has(keyword))
+        return packages.get(keyword);
+    // confirm is the keyword is a packages's directory name
+    const packagePath = path.join(packages.root, keyword);
+    const detectedPkg = [...packages.values()].find(p => p.path === packagePath);
+    if (detectedPkg)
+        return detectedPkg;
+    // cannot find the package
+    throw new Error(`Package ${keyword} not exists`);
 }
 function makePublishLog(queue) {
     function makePackageLog(record) {

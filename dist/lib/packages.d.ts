@@ -28,4 +28,4 @@ export declare function findRoot(): Promise<string>;
 /**
  * 确认当前是否在某一个 package 文件夹中，如果是，返回 package name
  */
-export declare function detectPackage(root: string, packages: Packages): Package | null;
+export declare function detectPackage(packages: Packages): Package | null;

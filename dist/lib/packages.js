@@ -120,13 +120,13 @@ function detectIsRoot(dirpath) {
 /**
  * 确认当前是否在某一个 package 文件夹中，如果是，返回 package name
  */
-function detectPackage(root, packages) {
+function detectPackage(packages) {
     var _a;
     const packageDirName = (_a = path.resolve(process.cwd())
-        .slice(root.length + 1)
+        .slice(packages.root.length + 1)
         .split(path.delimiter)[0]) !== null && _a !== void 0 ? _a : null;
     if (packageDirName) {
-        const packageDir = path.join(root, packageDirName);
+        const packageDir = path.join(packages.root, packageDirName);
         for (const pkg of packages.values()) {
             if (lang_1.isSamePath(pkg.path, packageDir))
                 return pkg;

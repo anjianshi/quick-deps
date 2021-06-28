@@ -1,6 +1,6 @@
 {
   "name": "quick-deps",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Simple dependencies manage",
   "homepage": "https://github.com/anjianshi/quick-deps",
   "repository": "https://github.com/anjianshi/quick-deps.git",
@@ -17,7 +17,8 @@
     "start": "DEBUG=deps ts-node src/index.ts",
     "build": "npm run clear && tsc",
     "clear": "rm -rf dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "dev-build": "npm run build && chmod +x dist/index.js"
   },
   "dependencies": {
     "debug": "^4.3.1",

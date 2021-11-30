@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectPackage = exports.findRoot = exports.Packages = void 0;
+exports.detectPackage = exports.findRoot = exports.markRoot = exports.Packages = void 0;
 /**
  * Packages management
  */
@@ -19,6 +19,7 @@ const logging_1 = require("./logging");
 const lang_1 = require("./lang");
 const package_1 = require("./package");
 const dependencies_1 = require("./dependencies");
+const ROOT_FILENAME = '.packages-root'; // 标记根目录的文件名
 class Packages {
     constructor(root, packagesMap) {
         this._dependencies = null;
@@ -29,22 +30,11 @@ class Packages {
         return __awaiter(this, void 0, void 0, function* () {
             if (!root)
                 root = yield findRoot();
-            return new Promise((resolve, reject) => {
-                fs.readdir(root, (err, items) => __awaiter(this, void 0, void 0, function* () {
-                    if (err)
-                        return reject(err);
-                    const map = new Map();
-                    for (const item of items) {
-                        const dirpath = path.join(root, item);
-                        try {
-                            const pkg = yield package_1.Package.getPackage(dirpath);
-                            map.set(pkg.name, pkg);
-                        }
-                        catch (_a) { } // 忽略不是合法 package 的项目
-                    }
-                    resolve(new Packages(root, map));
-                }));
-            });
+            const map = new Map();
+            for (const pkg of yield getPackagesUnderDirectory(root)) {
+                map.set(pkg.name, pkg);
+            }
+            return new Packages(root, map);
         });
     }
     has(name) { return this._packages.has(name); }
@@ -61,14 +51,17 @@ class Packages {
 }
 exports.Packages = Packages;
 /**
- * 找到 packages 根目录
- *
- * 规则：
- * - 如果 `当前目录` 下有任意 `子目录` 直接包含一个 `package.json` 文件，则认为 `当前目录` 是 `根目录`。
- * - 否则递归向上查找，直到找到最上层。
- * - 如果最终还是没找到，依然把当前目录视为 `根目录`，但是因为当前目录下没有符合要求的 package，所以是空的，不会触发任何行为。
- *
- * 返回 packages 根目录的绝对路径
+ * 将指定目录标记为 packages 根目录
+ */
+function markRoot(dirpath) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const filepath = path.join(dirpath, ROOT_FILENAME);
+        fs.writeFileSync(filepath, '');
+    });
+}
+exports.markRoot = markRoot;
+/**
+ * 找到 packages 根目录，返回它的绝对路径
  */
 function findRoot() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -95,27 +88,7 @@ exports.findRoot = findRoot;
  * 判断一个目录是否是 packages 根目录
  */
 function detectIsRoot(dirpath) {
-    return new Promise(resolve => {
-        // 遍历目录下的内容，若能一个合法的 package，便视为是一个 packages 根目录
-        fs.readdir(dirpath, { withFileTypes: true }, (err, files) => __awaiter(this, void 0, void 0, function* () {
-            // 目录内容读取失败
-            if (err)
-                return resolve(false);
-            // 遍历各子目录，看能否找到一个合法 package
-            for (const item of files) {
-                if (item.isDirectory()) {
-                    const subpath = path.join(dirpath, item.name);
-                    try {
-                        yield package_1.Package.getPackage(subpath); // 能成功读到 package.json 不报错，说明这子目录是一个合法 package
-                        return resolve(true);
-                    }
-                    catch (_a) { }
-                }
-            }
-            // 指定目录下没有找到合法 package
-            resolve(false);
-        }));
-    });
+    return fs.existsSync(path.join(dirpath, ROOT_FILENAME));
 }
 /**
  * 确认当前是否在某一个 package 文件夹中，如果是，返回 package name
@@ -135,3 +108,30 @@ function detectPackage(packages) {
     return null;
 }
 exports.detectPackage = detectPackage;
+/**
+ * 递归找出目录及其子目录下的所有 packages
+ */
+function getPackagesUnderDirectory(dirpath) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const result = [];
+        const directorys = (yield lang_1.readdir(dirpath, true)).filter(item => item.isDirectory());
+        for (const item of directorys) {
+            const itempath = path.join(dirpath, item.name);
+            try {
+                const pkg = yield package_1.Package.getPackage(itempath);
+                result.push(pkg);
+            }
+            catch (_a) { } // 忽略不是合法 package 的项目
+            if (!isIgnoreDirectory(item.name)) {
+                result.push(...yield getPackagesUnderDirectory(itempath));
+            }
+        }
+        return result;
+    });
+}
+/**
+ * 符合条件的目录不检测其下的 packages
+ */
+function isIgnoreDirectory(name) {
+    return name.startsWith('.') || name === 'node_modules';
+}

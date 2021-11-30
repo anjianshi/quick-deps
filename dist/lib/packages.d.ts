@@ -15,14 +15,11 @@ export declare class Packages {
     get dependencies(): DependenciesTree;
 }
 /**
- * 找到 packages 根目录
- *
- * 规则：
- * - 如果 `当前目录` 下有任意 `子目录` 直接包含一个 `package.json` 文件，则认为 `当前目录` 是 `根目录`。
- * - 否则递归向上查找，直到找到最上层。
- * - 如果最终还是没找到，依然把当前目录视为 `根目录`，但是因为当前目录下没有符合要求的 package，所以是空的，不会触发任何行为。
- *
- * 返回 packages 根目录的绝对路径
+ * 将指定目录标记为 packages 根目录
+ */
+export declare function markRoot(dirpath: string): Promise<void>;
+/**
+ * 找到 packages 根目录，返回它的绝对路径
  */
 export declare function findRoot(): Promise<string>;
 /**

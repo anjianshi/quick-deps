@@ -1,6 +1,15 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isEmpty = exports.execute = exports.isSamePath = exports.fileExists = void 0;
+exports.readdir = exports.isEmpty = exports.execute = exports.isSamePath = exports.fileExists = void 0;
 const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
@@ -50,3 +59,13 @@ function isEmpty(obj) {
     return !obj || Object.keys(obj).length === 0;
 }
 exports.isEmpty = isEmpty;
+function readdir(dirpath, withFileTypes = false) {
+    return new Promise((resolve, reject) => {
+        fs.readdir(dirpath, { withFileTypes: withFileTypes }, (err, items) => __awaiter(this, void 0, void 0, function* () {
+            if (err)
+                return reject(err);
+            resolve(items);
+        }));
+    });
+}
+exports.readdir = readdir;

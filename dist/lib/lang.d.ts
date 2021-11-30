@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import * as fs from 'fs';
 import * as childProcess from 'child_process';
 /**
  * Check if the target file exists, and is a file
@@ -21,3 +22,9 @@ export declare function execute(command: string, options: childProcess.SpawnOpti
 export declare function isEmpty<O extends {
     [key: string]: any;
 }>(obj?: O): boolean;
+/**
+ * Promisify fs.readdir()
+ */
+declare function readdir(dirpath: string, withFileTypes?: false): Promise<string[]>;
+declare function readdir(dirpath: string, withFileTypes: true): Promise<fs.Dirent[]>;
+export { readdir };

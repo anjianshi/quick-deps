@@ -1,6 +1,6 @@
 {
   "name": "quick-deps",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Simple dependencies manage",
   "homepage": "https://github.com/anjianshi/quick-deps",
   "repository": "https://github.com/anjianshi/quick-deps.git",
@@ -21,16 +21,16 @@
     "dev-build": "npm run build && chmod +x dist/index.js"
   },
   "dependencies": {
-    "debug": "^4.3.1",
+    "debug": "^4.3.3",
     "quick-args": "^0.3.0"
   },
   "devDependencies": {
     "@anjianshi/eslint-config": "^1.1.0",
-    "@types/debug": "^4.1.5",
-    "@types/node": "^15.12.2",
-    "eslint": "^7.28.0",
-    "ts-node": "^10.0.0",
-    "typescript": "^4.3.2"
+    "@types/debug": "^4.1.7",
+    "@types/node": "^16.11.11",
+    "eslint": "^8.3.0",
+    "ts-node": "^10.4.0",
+    "typescript": "^4.5.2"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"

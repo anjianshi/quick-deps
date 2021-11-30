@@ -4,32 +4,25 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import logging from './logging'
-import { isSamePath } from './lang'
+import { isSamePath, readdir } from './lang'
 import { Package } from './package'
 import { resolveDependencies } from './dependencies'
 import type { DependenciesTree } from './dependencies'
+
+
+const ROOT_FILENAME = '.packages-root'      // 标记根目录的文件名
 
 
 export class Packages {
   static async load(root = '') {
     if (!root) root = await findRoot()
 
-    return new Promise<Packages>((resolve, reject) => {
-      fs.readdir(root, async (err, items) => {
-        if (err) return reject(err)
+    const map = new Map<string, Package>()
+    for(const pkg of await getPackagesUnderDirectory(root)) {
+      map.set(pkg.name, pkg)
+    }
 
-        const map = new Map<string, Package>()
-        for(const item of items) {
-          const dirpath = path.join(root, item)
-          try {
-            const pkg = await Package.getPackage(dirpath)
-            map.set(pkg.name, pkg)
-          } catch {}    // 忽略不是合法 package 的项目
-        }
-
-        resolve(new Packages(root, map))
-      })
-    })
+    return new Packages(root, map)
   }
 
   // =====================================
@@ -59,16 +52,18 @@ export class Packages {
 
 
 /**
- * 找到 packages 根目录
- *
- * 规则：
- * - 如果 `当前目录` 下有任意 `子目录` 直接包含一个 `package.json` 文件，则认为 `当前目录` 是 `根目录`。
- * - 否则递归向上查找，直到找到最上层。
- * - 如果最终还是没找到，依然把当前目录视为 `根目录`，但是因为当前目录下没有符合要求的 package，所以是空的，不会触发任何行为。
- *
- * 返回 packages 根目录的绝对路径
+ * 将指定目录标记为 packages 根目录
  */
- export async function findRoot() {
+export async function markRoot(dirpath: string) {
+  const filepath = path.join(dirpath, ROOT_FILENAME)
+  fs.writeFileSync(filepath, '')
+}
+
+
+/**
+ * 找到 packages 根目录，返回它的绝对路径
+ */
+export async function findRoot() {
   const initial = path.resolve(process.cwd())
 
   let checking = initial
@@ -93,27 +88,7 @@ export class Packages {
  * 判断一个目录是否是 packages 根目录
  */
 function detectIsRoot(dirpath: string) {
-  return new Promise(resolve => {
-    // 遍历目录下的内容，若能一个合法的 package，便视为是一个 packages 根目录
-    fs.readdir(dirpath, { withFileTypes: true }, async (err, files) => {
-      // 目录内容读取失败
-      if (err) return resolve(false)
-
-      // 遍历各子目录，看能否找到一个合法 package
-      for(const item of files) {
-        if (item.isDirectory()) {
-          const subpath = path.join(dirpath, item.name)
-          try {
-            await Package.getPackage(subpath)  // 能成功读到 package.json 不报错，说明这子目录是一个合法 package
-            return resolve(true)
-          } catch {}
-        }
-      }
-
-      // 指定目录下没有找到合法 package
-      resolve(false)
-    })
-  })
+  return fs.existsSync(path.join(dirpath, ROOT_FILENAME))
 }
 
 
@@ -133,4 +108,35 @@ export function detectPackage(packages: Packages) {
   }
 
   return null
+}
+
+
+/**
+ * 递归找出目录及其子目录下的所有 packages
+ */
+async function getPackagesUnderDirectory(dirpath: string): Promise<Package[]> {
+  const result: Package[] = []
+
+  const directorys = (await readdir(dirpath, true)).filter(item => item.isDirectory())
+  for(const item of directorys) {
+    const itempath = path.join(dirpath, item.name)
+    try {
+      const pkg = await Package.getPackage(itempath)
+      result.push(pkg)
+    } catch {}    // 忽略不是合法 package 的项目
+
+    if (!isIgnoreDirectory(item.name)) {
+      result.push(...await getPackagesUnderDirectory(itempath))
+    }
+  }
+
+  return result
+}
+
+
+/**
+ * 符合条件的目录不检测其下的 packages
+ */
+function isIgnoreDirectory(name: string) {
+  return name.startsWith('.') || name === 'node_modules'
 }

@@ -15,8 +15,13 @@
 npm install --global quick-deps
 
 cd my-packages
+deps init             # 将当前目录标记为 packages 根目录（之后可以在任意子目录下执行 deps 命令。若不标记根目录，则总是会把“当前目录”视为根目录）
 deps publish xxx      # 指定包发布新版本（同时也会更新相关包的依赖列表并发布新版）
 deps sync             # 保证互相依赖的各包都依赖的是最新的版本（有必要时会对一些包发布新版）
+
+# 查看各命令详细说明
+deps --help
+deps publish --help
 ...
 ```
 
@@ -24,9 +29,10 @@ deps sync             # 保证互相依赖的各包都依赖的是最新的版�
 ## 约定
 
 ### 目录结构
-目前仅支持以下目录结构：
+支持以下目录结构：
 ```js
 packages-root/
+  .packages-root      // 标记为根目录的目录会生成此文件
   package-A/
     package.json
   package-B/
@@ -34,11 +40,11 @@ packages-root/
   ...
 ```
 
-## 依赖管理
+### 依赖管理
 - 此工具只负责维护 `packages root` 下各 package 之间的依赖关系，不处理外部依赖。
 - 此工具约定各 package 之间永远都只依赖最新版本，不允许出现循环依赖
 
-## 版本号
+### 版本号
 - 此工具仅支持基础的 semver 格式的版本号，不支持 `1.2.x`、`1.1.0-alpha`、`http://xxx`、`*` 等格式的版本号
 - 若 package 版本号是不支持的格式，则此 package 不会被纳入维护范围（被视为是外部包）
-- 若 package 某个依赖版本号是不支持的格式，则那个依赖会被忽略（即使那个包是会被维护的内部包）
+- 若 package 某个依赖版本号是不支持的格式，则那个依赖会被忽略（即使那个被依赖的包是会被维护的内部包）

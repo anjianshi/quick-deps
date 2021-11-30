@@ -55,3 +55,19 @@ export function execute(command: string, options: childProcess.SpawnOptions) {
 export function isEmpty<O extends { [key: string]: any }>(obj?: O) {
   return !obj || Object.keys(obj).length === 0
 }
+
+
+/**
+ * Promisify fs.readdir()
+ */
+function readdir(dirpath: string, withFileTypes?: false): Promise<string[]>
+function readdir(dirpath: string, withFileTypes: true): Promise<fs.Dirent[]>
+function readdir(dirpath: string, withFileTypes: true | false = false) {
+  return new Promise<string[] | fs.Dirent[]>((resolve, reject) => {
+    fs.readdir(dirpath, { withFileTypes: withFileTypes as true }, async (err, items) => {
+      if (err) return reject(err)
+      resolve(items)
+    })
+  })
+}
+export { readdir }
